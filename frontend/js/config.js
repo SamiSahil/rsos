@@ -3,7 +3,7 @@ window.APP_CONFIG = {
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1'
       ? 'http://localhost:5000/api'
-      : 'https://restaurant-backend-670r.onrender.com/api',
+      : 'https://rsos.onrender.com/api',
 
   TAX_RATE: 0.05,
   CURRENCY_SYMBOL: '৳',
