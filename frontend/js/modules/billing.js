@@ -35,6 +35,7 @@ const Billing = {
 
   getFilteredOrders() {
     let orders = [...this.getOrders()].sort((a, b) => b.timestamp - a.timestamp);
+    orders = orders.slice(0, 15); // Limit to 15 most recent orders for performance
     const search = this.getSearchText();
     const statusFilter = this.getStatusFilter();
 

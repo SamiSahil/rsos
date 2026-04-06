@@ -59,7 +59,7 @@ const Kitchen = {
           !hiddenCompleted.includes(order.id)
       )
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 10);
+      .slice(0, 7); // Limit to 7 most recent completed orders
 
     return {
       pending,
