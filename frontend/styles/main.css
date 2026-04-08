@@ -1098,6 +1098,101 @@ pre {
   border-color: rgba(245,158,11,0.25);
 }
 
+.staff-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+
+.staff-profile-photo-lg {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+.staff-profile-initials-lg {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  color: white;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.staff-profile-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.staff-profile-name {
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.staff-profile-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.staff-photo-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+.staff-chip-group { display:flex; gap:6px; flex-wrap:wrap; }
+.staff-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.staff-chip.active {
+  background: var(--accent-bg);
+  border-color: rgba(232, 93, 36, 0.3);
+  color: var(--accent);
+}
+.staff-payroll-cell { display:flex; flex-direction:column; gap:4px; }
+.staff-payroll-topline { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.staff-payroll-amount { font-weight: 900; color: var(--text-primary); }
+.staff-payroll-meta { font-size:0.78rem; color: var(--text-muted); line-height:1.35; }
+.staff-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.staff-attendance-month { display:inline-flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.staff-att-badge {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.staff-att-badge strong { color: var(--text-primary); }
+
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

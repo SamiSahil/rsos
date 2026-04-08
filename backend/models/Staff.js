@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const attendanceEntrySchema = new mongoose.Schema(
   {
     date: {
-      type: String, // format: YYYY-MM-DD
+      type: String, // YYYY-MM-DD
       required: true,
       trim: true
     },
@@ -49,6 +49,17 @@ const staffSchema = new mongoose.Schema(
       trim: true
     },
 
+    // ---- NEW: Staff profile photo (Cloudinary) ----
+    photoUrl: {
+      type: String,
+      default: ""
+    },
+
+    photoPublicId: {
+      type: String,
+      default: ""
+    },
+
     nidNumber: {
       type: String,
       default: "",
@@ -71,7 +82,6 @@ const staffSchema = new mongoose.Schema(
       default: "waiter"
     },
 
-    // Current quick visual status (can reflect latest attendance selection)
     status: {
       type: String,
       enum: ["active", "inactive", "on-leave"],
@@ -84,7 +94,6 @@ const staffSchema = new mongoose.Schema(
       min: [0, "Monthly salary cannot be negative"]
     },
 
-    // Optional planning / business field
     workingDays: {
       type: Number,
       default: 30,

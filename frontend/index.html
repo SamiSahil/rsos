@@ -74,11 +74,9 @@
         </div>
       </div>
 
-<nav class="sidebar-nav">
-        <!-- Add 'public-only-nav' class here -->
+      <nav class="sidebar-nav">
         <div class="nav-section-label public-only-nav">Public</div>
 
-        <!-- Add 'public-only-nav' class here too -->
         <a class="nav-item public-only-nav" data-page="home" href="#/home" onclick="event.preventDefault(); App.navigate('home')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M3 11l9-8 9 8"/>
@@ -88,7 +86,16 @@
         </a>
 
         <div class="nav-section-label">Main</div>
-        <!-- ... rest of your nav ... -->
+        
+        <!-- ✅ NEW: MY PROFILE -->
+        <a class="nav-item" data-page="profile" href="#/profile" onclick="event.preventDefault(); App.navigate('profile')">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          My Profile
+        </a>
+
         <a class="nav-item active" data-page="dashboard" href="#/dashboard" onclick="event.preventDefault(); App.navigate('dashboard')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -98,6 +105,7 @@
           </svg>
           Dashboard
         </a>
+
 
         <a class="nav-item" data-page="menu" href="#/menu" onclick="event.preventDefault(); App.navigate('menu')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -143,15 +151,17 @@
         </a>
 
         <div class="nav-section-label">Admin</div>
-<a class="nav-item" data-page="staff" data-roles="admin,manager" href="#/staff" onclick="event.preventDefault(); App.navigate('staff')">
-  <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-    <path d="M16 3.13a4 4 0 010 7.75"/>
-  </svg>
-  Staff
-</a>
+
+        <a class="nav-item" data-page="staff" data-roles="admin,manager" href="#/staff" onclick="event.preventDefault(); App.navigate('staff')">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+            <path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          Staff
+        </a>
+
         <a class="nav-item" data-page="analytics" href="#/analytics" onclick="event.preventDefault(); App.navigate('analytics')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M18 20V10M12 20V4M6 20v-6" />
@@ -182,6 +192,7 @@
         </a>
       </nav>
     </aside>
+
     <!-- MAIN CONTENT -->
     <main class="main-content">
       <!-- TOPBAR -->
@@ -197,12 +208,11 @@
             <div class="breadcrumb" id="pageBreadcrumb">Explore menu & place your order</div>
           </div>
         </div>
-<div class="topbar-right">
-          <!-- Staff Info & Time -->
+
+        <div class="topbar-right">
           <div id="staffAuthInfo"></div>
           <span style="font-size:0.78rem;color:var(--text-muted)" id="currentDateTime"></span>
 
-          <!-- Notifications -->
           <button class="btn-icon" onclick="App.showNotifications()" title="Notifications" style="position:relative" id="notificationBtn">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -227,7 +237,6 @@
             ">0</span>
           </button>
         </div>
-
       </header>
 
       <!-- PAGE CONTAINER -->
@@ -235,32 +244,30 @@
         <!-- PUBLIC HOME -->
         <div class="page-view" id="page-home"></div>
 
-<!-- DASHBOARD -->
+        <!-- ✅ NEW: PROFILE PAGE -->
+        <div class="page-view" id="page-profile"></div>
+
+        <!-- DASHBOARD -->
         <div class="page-view active" id="page-dashboard">
           <div class="stats-grid" id="dashboardStats"></div>
 
-          <!-- TOP ROW: Revenue & Recent Orders -->
           <div class="charts-grid" style="gap: 24px;">
-            
-            <!-- Revenue Overview (Premium Card) -->
             <div class="card premium-card">
               <div class="premium-card-header">
                 <div class="premium-title-wrap">
                   <div class="premium-icon-box">
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a4 4 0 01-4 4H8a4 4 0 01-4-4V4z"/></svg>
                   </div>
-                 <div>
-  <div class="card-title" id="dashboardRevenueTitle">This Week</div>
-  <div class="card-subtitle" id="dashboardRevenueSubtitle">Daily revenue for selected week</div>
-</div>
-<div id="dashboardRevenueControls"></div>
-                
-</div>
+                  <div>
+                    <div class="card-title" id="dashboardRevenueTitle">This Week</div>
+                    <div class="card-subtitle" id="dashboardRevenueSubtitle">Daily revenue for selected week</div>
+                  </div>
+                  <div id="dashboardRevenueControls"></div>
+                </div>
               </div>
               <div class="chart-canvas-wrap"><canvas id="revenueChart" height="230"></canvas></div>
             </div>
 
-            <!-- Recent Orders (Premium Card) -->
             <div class="card premium-card" style="display: flex; flex-direction: column;">
               <div class="premium-card-header">
                 <div class="premium-title-wrap">
@@ -271,12 +278,10 @@
                 </div>
                 <button class="btn btn-secondary btn-sm premium-btn" onclick="App.navigate('kitchen')">View All</button>
               </div>
-              <!-- Increased max-height so it perfectly aligns with the revenue chart -->
               <div class="recent-orders-list" id="recentOrdersList" style="max-height: 380px; padding-right: 4px;"></div>
             </div>
-
           </div>
-          <!-- BOTTOM ROW: Sales by Category -->
+
           <div class="card premium-card" style="margin-top: 24px;">
             <div class="premium-card-header" style="border-bottom: none; padding-bottom: 0;">
               <div class="premium-title-wrap">
@@ -292,6 +297,7 @@
             <div class="pie-chart-wrap" style="margin-top: -10px;"><canvas id="categoryPieChart" height="260"></canvas></div>
           </div>
         </div>
+
         <!-- MENU -->
         <div class="page-view" id="page-menu">
           <div class="filters-bar">
@@ -316,11 +322,9 @@
           <div class="menu-grid" id="menuGrid"></div>
         </div>
 
- <!-- FLOOR -->
+        <!-- FLOOR -->
         <div class="page-view" id="page-floor">
           <div class="filters-bar" style="justify-content:space-between;align-items:center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px; margin-bottom: 24px;">
-            
-            <!-- Premium Legend -->
             <div class="premium-legend">
               <div class="legend-pill"><div class="legend-glow" style="background:var(--success); box-shadow: 0 0 10px var(--success);"></div> Available</div>
               <div class="legend-pill"><div class="legend-glow" style="background:var(--accent); box-shadow: 0 0 10px var(--accent);"></div> Occupied</div>
@@ -335,9 +339,9 @@
             </button>
           </div>
 
-          <!-- Container for our new Category Layout -->
           <div id="floorGridContainer" style="display: flex; flex-direction: column; gap: 32px;"></div>
         </div>
+
         <!-- POS -->
         <div class="page-view" id="page-pos">
           <div class="pos-layout">
@@ -376,12 +380,7 @@
                 </div>
               </div>
 
-              <div class="pos-cart-summary" id="posCartSummary" style="display:none">
-                <div class="summary-row"><span>Subtotal</span><span id="posSubtotal">$0.00</span></div>
-                <div class="summary-row"><span>Tax (5%)</span><span id="posTax">$0.00</span></div>
-                <div class="summary-row"><span>Discount</span><span id="posDiscount">-$0.00</span></div>
-                <div class="summary-row total"><span>Total</span><span id="posTotal">$0.00</span></div>
-              </div>
+              <div class="pos-cart-summary" id="posCartSummary" style="display:none"></div>
 
               <div class="pos-cart-actions">
                 <button class="btn btn-primary" onclick="POS.placeOrder()" id="posPlaceOrderBtn" disabled>
@@ -456,44 +455,54 @@
             </div>
           </div>
         </div>
-        
 
-        <!-- STAFF -->
-<div class="page-view" id="page-staff">
-  <div class="filters-bar" style="justify-content:space-between;align-items:center">
-    <div>
-      <h3 style="font-size:1rem;font-weight:700">Staff Management</h3>
-      <p style="font-size:0.8rem;color:var(--text-muted)">Manage staff profiles, roles, status, and NID records</p>
-    </div>
+        <!-- STAFF (UPDATED) -->
+        <div class="page-view" id="page-staff">
+          <div class="filters-bar" style="justify-content:space-between;align-items:flex-end">
+            <div>
+              <h3 style="font-size:1rem;font-weight:800">Staff Payroll</h3>
+              <p style="font-size:0.8rem;color:var(--text-muted)">
+                Select a salary month → track payable/paid/due → print receipts as proof
+              </p>
+            </div>
 
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-secondary" onclick="StaffPage.render()">Refresh</button>
-      <button class="btn btn-primary" onclick="StaffPage.openAddModal()">Add Staff</button>
-    </div>
-  </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <input class="form-input" id="staffSearchInput" placeholder="Search staff..." style="width:260px" oninput="StaffPage.renderTable()">
+              <input class="form-input" type="month" id="payrollMonthInput" onchange="StaffPage.setPayrollMonth(this.value)" style="width:auto">
+              <button class="btn btn-secondary" onclick="StaffPage.load()">Refresh</button>
+              <button class="btn btn-primary" onclick="StaffPage.openAddModal()">Add Staff</button>
+            </div>
+          </div>
 
-  <div class="card">
-    <div id="staffSummary" style="margin-bottom:16px"></div>
-    <div class="inventory-table-wrap">
-      <table class="data-table">
-<thead>
-  <tr>
-    <th>Staff</th>
-    <th>Role</th>
-    <th>Status / Attendance Today</th>
-    <th>Phone</th>
-    <th>Join Date</th>
-    <th>Monthly Salary</th>
-    <th>Attendance</th>
-    <th>Payable Salary</th>
-    <th>Actions</th>
-  </tr>
-</thead>
-        <tbody id="staffBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
+          <div class="staff-chip-group" style="margin-bottom:14px">
+            <button class="staff-chip active" id="staffFilterAll" onclick="StaffPage.setPayrollFilter('all')">All</button>
+            <button class="staff-chip" id="staffFilterDue" onclick="StaffPage.setPayrollFilter('due')">Due</button>
+            <button class="staff-chip" id="staffFilterPaid" onclick="StaffPage.setPayrollFilter('paid')">Paid</button>
+          </div>
+
+          <div class="card">
+            <div id="staffSummary" style="margin-bottom:16px"></div>
+
+            <div class="inventory-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Staff</th>
+                    <th>Role</th>
+                    <th>Status (Today)</th>
+                    <th>Phone</th>
+                    <th>Join Date</th>
+                    <th>Monthly Salary</th>
+                    <th>Attendance (Selected Month)</th>
+                    <th>Payroll (Selected Month)</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="staffBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
         <!-- ANALYTICS -->
         <div class="page-view" id="page-analytics">
@@ -502,12 +511,12 @@
           <div class="reports-grid">
             <div class="card">
               <div class="card-header">
-  <div>
-    <div class="card-title" id="analyticsChartTitle">This Week</div>
-    <div class="card-subtitle" id="analyticsChartSubtitle">Daily sales for selected week</div>
-  </div>
-  <div id="analyticsChartControls"></div>
-</div>
+                <div>
+                  <div class="card-title" id="analyticsChartTitle">This Week</div>
+                  <div class="card-subtitle" id="analyticsChartSubtitle">Daily sales for selected week</div>
+                </div>
+                <div id="analyticsChartControls"></div>
+              </div>
               <div class="chart-canvas-wrap"><canvas id="dailySalesChart" height="220"></canvas></div>
             </div>
 
@@ -539,11 +548,10 @@
               <input type="text" placeholder="Search orders..." id="billingSearchInput" oninput="Billing.filter()">
             </div>
 
-           <select class="form-select" id="billingStatusFilter" style="width:auto" onchange="Billing.filter()">
-  <option value="all">All Status</option>
-  <option value="completed">Completed</option>
-  <option value="pending">Pending</option>
-</select>
+            <select class="form-select" id="billingStatusFilter" style="width:auto" onchange="Billing.filter()">
+              <option value="all">All Status</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
             </select>
           </div>
 
@@ -568,7 +576,7 @@
           </div>
         </div>
 
-  <!-- SYNC CENTER -->
+        <!-- SYNC CENTER -->
         <div class="page-view" id="page-sync">
           <div class="filters-bar" style="justify-content:space-between;align-items:center">
             <div>
@@ -588,7 +596,6 @@
             <div id="syncQueueList"></div>
           </div>
 
-          <!-- APP INSTALLATION BUTTONS (Moved Here) -->
           <div style="margin-top: 24px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
             <button class="btn btn-primary" id="installPwaBtn" style="display:none; padding: 12px 24px; font-size: 0.9rem;" onclick="installPWA()">
               <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -607,27 +614,35 @@
               </svg>
               Install on iPhone/iPad
             </button>
-          </div>          
+          </div>
         </div>
-  <!-- SCRIPTS -->
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/store.js"></script>
-  <script src="js/chartLib.js"></script>
+      </div>
 
-  <script src="js/modules/dashboard.js"></script>
-  <script src="js/modules/menuEngine.js"></script>
-  <script src="js/modules/floorMap.js"></script>
-  <script src="js/modules/pos.js"></script>
-  <script src="js/modules/publicHome.js"></script>
-  <script src="js/modules/kitchen.js"></script>
-  <script src="js/modules/inventory.js"></script>
-  <script src="js/modules/analytics.js"></script>
-  <script src="js/modules/billing.js"></script>
-  <script src="js/modules/staff.js"></script>
-  <script src="js/modules/syncCenter.js"></script>
+      <!-- SCRIPTS -->
+      <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+      <script src="js/config.js"></script>
+      <script src="js/store.js"></script>
+      <script src="js/chartLib.js"></script>
 
-  <script src="js/app.js"></script>
-  <script src="js/main.js"></script>
+      <script src="js/modules/dashboard.js"></script>
+      <script src="js/modules/menuEngine.js"></script>
+      <script src="js/modules/floorMap.js"></script>
+      <script src="js/modules/pos.js"></script>
+      <script src="js/modules/publicHome.js"></script>
+      <script src="js/modules/kitchen.js"></script>
+      <script src="js/modules/inventory.js"></script>
+      <script src="js/modules/analytics.js"></script>
+      <script src="js/modules/billing.js"></script>
+      <script src="js/modules/staff.js"></script>
+
+      <!-- ✅ NEW: PROFILE MODULE -->
+      <script src="js/modules/profile.js"></script>
+
+      <script src="js/modules/syncCenter.js"></script>
+
+      <script src="js/app.js"></script>
+      <script src="js/main.js"></script>
+    </main>
+  </div>
 </body>
 </html>

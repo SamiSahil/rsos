@@ -3,7 +3,7 @@ import streamifier from "streamifier";
 import Staff from "../models/Staff.js";
 import cloudinary from "../config/cloudinary.js";
 
-const uploadBufferToCloudinary = (buffer, folder = "restaurantos/staff-nid") => {
+const uploadBufferToCloudinary = (buffer, folder) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
@@ -28,10 +28,7 @@ const sanitizeStaffFields = (body) => {
   const monthlySalary = Math.max(0, Number(body.monthlySalary || 0));
   const workingDays = Math.max(1, Number(body.workingDays || 30));
 
-  return {
-    monthlySalary,
-    workingDays
-  };
+  return { monthlySalary, workingDays };
 };
 
 const toDateOnlyString = (value) => {
@@ -133,13 +130,26 @@ export const createStaff = async (req, res, next) => {
       throw new Error("A staff member with this email already exists");
     }
 
+    // Multer fields: req.files.photo?.[0], req.files.nidImage?.[0]
+    const photoFile = req.files?.photo?.[0] || null;
+    const nidFile = req.files?.nidImage?.[0] || null;
+
+    // Upload profile photo if provided
+    let photoUrl = "";
+    let photoPublicId = "";
+    if (photoFile) {
+      const uploadedPhoto = await uploadBufferToCloudinary(photoFile.buffer, "restaurantos/staff-photos");
+      photoUrl = uploadedPhoto.secure_url;
+      photoPublicId = uploadedPhoto.public_id;
+    }
+
+    // Upload NID image if provided
     let nidImageUrl = "";
     let nidImagePublicId = "";
-
-    if (req.file) {
-      const uploaded = await uploadBufferToCloudinary(req.file.buffer);
-      nidImageUrl = uploaded.secure_url;
-      nidImagePublicId = uploaded.public_id;
+    if (nidFile) {
+      const uploadedNid = await uploadBufferToCloudinary(nidFile.buffer, "restaurantos/staff-nid");
+      nidImageUrl = uploadedNid.secure_url;
+      nidImagePublicId = uploadedNid.public_id;
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -151,9 +161,14 @@ export const createStaff = async (req, res, next) => {
       phone,
       password: hashedPassword,
       address,
+
+      photoUrl,
+      photoPublicId,
+
       nidNumber,
       nidImageUrl,
       nidImagePublicId,
+
       role: role || "waiter",
       status: status || "active",
       monthlySalary: safeFields.monthlySalary,
@@ -189,19 +204,36 @@ export const updateStaff = async (req, res, next) => {
       throw new Error("Staff not found");
     }
 
+    const photoFile = req.files?.photo?.[0] || null;
+    const nidFile = req.files?.nidImage?.[0] || null;
+
+    // Handle photo replacement
+    let photoUrl = staff.photoUrl;
+    let photoPublicId = staff.photoPublicId;
+
+    if (photoFile) {
+      if (staff.photoPublicId) {
+        await cloudinary.uploader.destroy(staff.photoPublicId);
+      }
+      const uploadedPhoto = await uploadBufferToCloudinary(photoFile.buffer, "restaurantos/staff-photos");
+      photoUrl = uploadedPhoto.secure_url;
+      photoPublicId = uploadedPhoto.public_id;
+    }
+
+    // Handle NID replacement
     let nidImageUrl = staff.nidImageUrl;
     let nidImagePublicId = staff.nidImagePublicId;
 
-    if (req.file) {
+    if (nidFile) {
       if (staff.nidImagePublicId) {
         await cloudinary.uploader.destroy(staff.nidImagePublicId);
       }
-
-      const uploaded = await uploadBufferToCloudinary(req.file.buffer);
-      nidImageUrl = uploaded.secure_url;
-      nidImagePublicId = uploaded.public_id;
+      const uploadedNid = await uploadBufferToCloudinary(nidFile.buffer, "restaurantos/staff-nid");
+      nidImageUrl = uploadedNid.secure_url;
+      nidImagePublicId = uploadedNid.public_id;
     }
 
+    // Password update optional
     if (req.body.password && req.body.password.trim()) {
       req.body.password = await bcrypt.hash(req.body.password, 10);
     } else {
@@ -216,6 +248,10 @@ export const updateStaff = async (req, res, next) => {
         ...req.body,
         monthlySalary: safeFields.monthlySalary,
         workingDays: safeFields.workingDays,
+
+        photoUrl,
+        photoPublicId,
+
         nidImageUrl,
         nidImagePublicId
       },
@@ -266,9 +302,7 @@ export const updateStaffAttendance = async (req, res, next) => {
       });
     }
 
-    // Keep current overall status aligned with latest quick update
     staff.status = status;
-
     await staff.save();
 
     const safeStaff = await Staff.findById(staff._id).select("-password");
@@ -296,6 +330,12 @@ export const deleteStaff = async (req, res, next) => {
       throw new Error("Staff not found");
     }
 
+    // delete profile photo
+    if (staff.photoPublicId) {
+      await cloudinary.uploader.destroy(staff.photoPublicId);
+    }
+
+    // delete NID image
     if (staff.nidImagePublicId) {
       await cloudinary.uploader.destroy(staff.nidImagePublicId);
     }

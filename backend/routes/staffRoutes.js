@@ -12,13 +12,18 @@ import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+const staffUpload = upload.fields([
+  { name: "photo", maxCount: 1 },
+  { name: "nidImage", maxCount: 1 }
+]);
+
 router.route("/")
   .get(protect, authorize("admin", "manager"), getStaffList)
-  .post(protect, authorize("admin"), upload.single("nidImage"), createStaff);
+  .post(protect, authorize("admin"), staffUpload, createStaff);
 
 router.route("/:id")
   .get(protect, authorize("admin", "manager"), getStaffById)
-  .put(protect, authorize("admin"), upload.single("nidImage"), updateStaff)
+  .put(protect, authorize("admin"), staffUpload, updateStaff)
   .delete(protect, authorize("admin"), deleteStaff);
 
 router.route("/:id/attendance")

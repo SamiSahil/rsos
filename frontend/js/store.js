@@ -47,7 +47,8 @@ const Store = {
       this.fetchMenuItems(),
       this.fetchTables(),
       this.fetchOrders(),
-      this.fetchFeedback(),
+      // public fetch of feedback (hidden excluded by backend unless includeHidden is used)
+      this.fetchFeedback(false),
       this.fetchSettings()
     ]);
   },
@@ -232,37 +233,40 @@ const Store = {
     }
   },
 
-mapOrder(order) {
-  return {
-    mongoId: order._id || null,
-    id: order.orderNumber,
-    tableId: order.table?._id || (typeof order.table === 'string' ? order.table : null),
-    table: order.table?.number || '',
-    orderType: order.orderType || 'dine-in',
-    customerName: order.customerName || '',
-    customerPhone: order.customerPhone || '',
-    deliveryAddress: order.deliveryAddress || '',
-    paymentMethod: order.paymentMethod || 'cash',
-    items: (order.items || []).map((it) => ({
-      menuId: it.menuItem || null,
-      name: it.name,
-      qty: it.qty,
-      price: it.price
-    })),
-    subtotal: order.subtotal || 0,
-    tax: order.tax || 0,
-    discountPercent: order.discountPercent || 0,
-    discount: order.discount || 0,
-    total: order.total || 0,
-    status: order.status || 'pending',
-    billingStatus: order.billingStatus || 'pending',
-    prepStartedAt: order.prepStartedAt ? new Date(order.prepStartedAt).getTime() : null,
-    estimatedPrepMinutes: order.estimatedPrepMinutes || null,
-    estimatedReadyAt: order.estimatedReadyAt ? new Date(order.estimatedReadyAt).getTime() : null,
-    timestamp: new Date(order.createdAt || Date.now()).getTime(),
-    offlineQueued: false
-  };
-},
+  // -----------------------
+  // Mappers
+  // -----------------------
+  mapOrder(order) {
+    return {
+      mongoId: order._id || null,
+      id: order.orderNumber,
+      tableId: order.table?._id || (typeof order.table === 'string' ? order.table : null),
+      table: order.table?.number || '',
+      orderType: order.orderType || 'dine-in',
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      deliveryAddress: order.deliveryAddress || '',
+      paymentMethod: order.paymentMethod || 'cash',
+      items: (order.items || []).map((it) => ({
+        menuId: it.menuItem || null,
+        name: it.name,
+        qty: it.qty,
+        price: it.price
+      })),
+      subtotal: order.subtotal || 0,
+      tax: order.tax || 0,
+      discountPercent: order.discountPercent || 0,
+      discount: order.discount || 0,
+      total: order.total || 0,
+      status: order.status || 'pending',
+      billingStatus: order.billingStatus || 'pending',
+      prepStartedAt: order.prepStartedAt ? new Date(order.prepStartedAt).getTime() : null,
+      estimatedPrepMinutes: order.estimatedPrepMinutes || null,
+      estimatedReadyAt: order.estimatedReadyAt ? new Date(order.estimatedReadyAt).getTime() : null,
+      timestamp: new Date(order.createdAt || Date.now()).getTime(),
+      offlineQueued: false
+    };
+  },
 
   mapTable(table) {
     return {
@@ -294,30 +298,26 @@ mapOrder(order) {
       name: feedback.name,
       rating: feedback.rating,
       text: feedback.text,
+      isHidden: !!feedback.isHidden, // NEW
       timestamp: new Date(feedback.createdAt).getTime(),
       offlineQueued: false
     };
   },
 
+  // -----------------------
+  // Upserts
+  // -----------------------
   upsertOrder(order) {
     const mapped = this.mapOrder(order);
     const orders = [...this._state.orders];
-    const existingIndex = orders.findIndex(
-      (o) => o.mongoId === mapped.mongoId || o.id === mapped.id
-    );
+    const existingIndex = orders.findIndex((o) => o.mongoId === mapped.mongoId || o.id === mapped.id);
 
-    if (existingIndex >= 0) {
-      orders[existingIndex] = mapped;
-    } else {
-      orders.unshift(mapped);
-    }
+    if (existingIndex >= 0) orders[existingIndex] = mapped;
+    else orders.unshift(mapped);
 
     const deduped = orders.filter(
       (o, index, arr) =>
-        index ===
-        arr.findIndex(
-          (x) => (x.mongoId && x.mongoId === o.mongoId) || x.id === o.id
-        )
+        index === arr.findIndex((x) => (x.mongoId && x.mongoId === o.mongoId) || x.id === o.id)
     );
 
     this.set('orders', deduped);
@@ -333,11 +333,8 @@ mapOrder(order) {
     const tables = [...this._state.tables];
     const existingIndex = tables.findIndex((t) => t.id === mapped.id);
 
-    if (existingIndex >= 0) {
-      tables[existingIndex] = mapped;
-    } else {
-      tables.push(mapped);
-    }
+    if (existingIndex >= 0) tables[existingIndex] = mapped;
+    else tables.push(mapped);
 
     tables.sort((a, b) => a.number - b.number);
     this.set('tables', tables);
@@ -359,6 +356,9 @@ mapOrder(order) {
     this.set('menuItems', updatedItems);
   },
 
+  // -----------------------
+  // Offline queue helpers
+  // -----------------------
   getQueue() {
     try {
       return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)) || [];
@@ -373,7 +373,6 @@ mapOrder(order) {
 
   addToQueue(item) {
     const queue = this.getQueue();
-
     queue.push({
       queueId: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
       createdAt: Date.now(),
@@ -382,7 +381,6 @@ mapOrder(order) {
       syncError: null,
       ...item
     });
-
     this.saveQueue(queue);
   },
 
@@ -418,7 +416,6 @@ mapOrder(order) {
     }
 
     this.saveQueue(remaining);
-
     await this.refreshAll();
   },
 
@@ -426,15 +423,9 @@ mapOrder(order) {
     switch (item.type) {
       case 'CREATE_ORDER': {
         const payload = { ...item.payload };
+        if (offlineIdMap.has(payload.tableId)) payload.tableId = offlineIdMap.get(payload.tableId);
 
-        if (offlineIdMap.has(payload.tableId)) {
-          payload.tableId = offlineIdMap.get(payload.tableId);
-        }
-
-        await this.request('/orders', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
+        await this.request('/orders', { method: 'POST', body: JSON.stringify(payload) });
         return;
       }
 
@@ -463,49 +454,26 @@ mapOrder(order) {
       }
 
       case 'CREATE_TABLE': {
-        const json = await this.request('/tables', {
-          method: 'POST',
-          body: JSON.stringify(item.payload)
-        });
-
-        if (item.offlineTableId && json?.data?._id) {
-          offlineIdMap.set(item.offlineTableId, json.data._id);
-        }
+        const json = await this.request('/tables', { method: 'POST', body: JSON.stringify(item.payload) });
+        if (item.offlineTableId && json?.data?._id) offlineIdMap.set(item.offlineTableId, json.data._id);
         return;
       }
 
       case 'UPDATE_TABLE': {
         let targetTableId = item.tableId;
+        if (offlineIdMap.has(targetTableId)) targetTableId = offlineIdMap.get(targetTableId);
+        if (String(targetTableId).startsWith('OFF-TABLE-')) throw new Error('Waiting for offline-created table to sync first');
 
-        if (offlineIdMap.has(targetTableId)) {
-          targetTableId = offlineIdMap.get(targetTableId);
-        }
-
-        if (String(targetTableId).startsWith('OFF-TABLE-')) {
-          throw new Error('Waiting for offline-created table to sync first');
-        }
-
-        await this.request(`/tables/${targetTableId}`, {
-          method: 'PUT',
-          body: JSON.stringify(item.payload)
-        });
+        await this.request(`/tables/${targetTableId}`, { method: 'PUT', body: JSON.stringify(item.payload) });
         return;
       }
 
       case 'DELETE_TABLE': {
         let targetTableId = item.tableId;
+        if (offlineIdMap.has(targetTableId)) targetTableId = offlineIdMap.get(targetTableId);
+        if (String(targetTableId).startsWith('OFF-TABLE-')) return;
 
-        if (offlineIdMap.has(targetTableId)) {
-          targetTableId = offlineIdMap.get(targetTableId);
-        }
-
-        if (String(targetTableId).startsWith('OFF-TABLE-')) {
-          return;
-        }
-
-        await this.request(`/tables/${targetTableId}`, {
-          method: 'DELETE'
-        });
+        await this.request(`/tables/${targetTableId}`, { method: 'DELETE' });
         return;
       }
 
@@ -514,6 +482,9 @@ mapOrder(order) {
     }
   },
 
+  // -----------------------
+  // Network request helper
+  // -----------------------
   async request(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
     const maxRetries = 3;
@@ -522,9 +493,7 @@ mapOrder(order) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        if (!navigator.onLine) {
-          throw new Error('You are offline');
-        }
+        if (!navigator.onLine) throw new Error('You are offline');
 
         const headers = {
           ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -532,18 +501,12 @@ mapOrder(order) {
           ...(options.headers || {})
         };
 
-        const response = await fetch(url, {
-          ...options,
-          headers
-        });
+        const response = await fetch(url, { ...options, headers });
 
         const json = await response.json().catch(() => ({}));
 
         if (!response.ok || json.success === false) {
-          if (response.status === 401) {
-            this.logout();
-          }
-
+          if (response.status === 401) this.logout();
           throw new Error(json.message || `Request failed with status ${response.status}`);
         }
 
@@ -551,15 +514,16 @@ mapOrder(order) {
       } catch (error) {
         lastError = error;
         const isLastAttempt = attempt === maxRetries;
-        if (!isLastAttempt) {
-          await sleep(retryDelay * attempt);
-        }
+        if (!isLastAttempt) await sleep(retryDelay * attempt);
       }
     }
 
     throw new Error(lastError?.message || 'Network request failed after retries');
   },
 
+  // -----------------------
+  // Auth
+  // -----------------------
   async login(email, password) {
     const json = await this.request('/auth/login', {
       method: 'POST',
@@ -585,6 +549,9 @@ mapOrder(order) {
     return json.data;
   },
 
+  // -----------------------
+  // Fetchers
+  // -----------------------
   async fetchStaff() {
     const json = await this.request('/staff');
     this.set('staff', json.data || []);
@@ -610,8 +577,10 @@ mapOrder(order) {
     this.set('orders', [...localQueuedOrders, ...backendOrders]);
   },
 
-  async fetchFeedback() {
-    const json = await this.request('/feedback');
+  // UPDATED: includeHidden option for admin analytics moderation
+  async fetchFeedback(includeHidden = false) {
+    const q = includeHidden ? '?includeHidden=true' : '';
+    const json = await this.request(`/feedback${q}`);
     const backendFeedback = (json.data || []).map((f) => this.mapFeedback(f));
     const localQueuedFeedback = this._state.feedback.filter((f) => f.offlineQueued);
     this.set('feedback', [...localQueuedFeedback, ...backendFeedback]);

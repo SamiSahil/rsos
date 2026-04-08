@@ -3,12 +3,14 @@ const PublicHome = {
   filterCategory: 'All',
   selectedTableId: '',
   searchText: '',
+  reviewRating: 5,
 
   render() {
     this.renderLayout();
     this.renderHero();
     this.renderFilters();
     this.renderMenuGrid();
+    this.renderReviewsSection(); // NEW
     this.updateCartBadge();
   },
 
@@ -16,6 +18,7 @@ const PublicHome = {
     return document.getElementById(id);
   },
 
+  // ---------- Store getters ----------
   getMenuItems() {
     return Store.get('menuItems') || [];
   },
@@ -28,6 +31,10 @@ const PublicHome = {
     return Store.get('orders') || [];
   },
 
+  getFeedback() {
+    return Store.get('feedback') || [];
+  },
+
   getDiscountPercent() {
     return Store.getDiscountPercent ? Store.getDiscountPercent() : 0;
   },
@@ -36,6 +43,7 @@ const PublicHome = {
     return window.APP_CONFIG?.TAX_RATE || 0.05;
   },
 
+  // ---------- Search / Filter ----------
   syncSearchState() {
     const input = this.byId('publicMenuSearch');
     this.searchText = (input?.value || '').trim().toLowerCase();
@@ -64,6 +72,7 @@ const PublicHome = {
     return items;
   },
 
+  // ---------- Layout ----------
   renderLayout() {
     const page = this.byId('page-home');
     if (!page) return;
@@ -90,6 +99,9 @@ const PublicHome = {
         </div>
 
         <div class="menu-grid" id="publicMenuGrid"></div>
+
+        <!-- NEW: Reviews section container -->
+        <div id="publicReviewsSection"></div>
       </div>
     `;
   },
@@ -109,7 +121,7 @@ const PublicHome = {
             <p>Fresh food. Fast ordering. Beautiful dining.</p>
             ${
               discountPercent > 0
-                ? `<div class="public-discount-banner">🎉 Special Offer: ${discountPercent}% discount on all orders!</div>`
+                ? `<div class="public-discount-banner">Special Offer: ${discountPercent}% discount on all orders!</div>`
                 : ''
             }
           </div>
@@ -157,6 +169,7 @@ const PublicHome = {
     this.updateCartBadge();
   },
 
+  // ---------- Filters ----------
   renderFilters() {
     const container = this.byId('publicMenuFilterChips');
     if (!container) return;
@@ -190,6 +203,7 @@ const PublicHome = {
     this.renderMenuGrid();
   },
 
+  // ---------- Menu grid ----------
   renderMenuGrid() {
     const grid = this.byId('publicMenuGrid');
     if (!grid) return;
@@ -250,6 +264,7 @@ const PublicHome = {
     `;
   },
 
+  // ---------- About ----------
   showAbout() {
     App.openModal(
       'About RestaurantOS',
@@ -264,6 +279,7 @@ const PublicHome = {
     );
   },
 
+  // ---------- Cart ----------
   getCartCount() {
     return this.cart.reduce((sum, item) => sum + item.qty, 0);
   },
@@ -498,13 +514,8 @@ const PublicHome = {
     const tableGroup = this.byId('tableSelectGroup');
     const orderType = type?.value || 'delivery';
 
-    if (deliveryGroup) {
-      deliveryGroup.style.display = orderType === 'delivery' ? 'block' : 'none';
-    }
-
-    if (tableGroup) {
-      tableGroup.style.display = orderType === 'dine-in' ? 'block' : 'none';
-    }
+    if (deliveryGroup) deliveryGroup.style.display = orderType === 'delivery' ? 'block' : 'none';
+    if (tableGroup) tableGroup.style.display = orderType === 'dine-in' ? 'block' : 'none';
   },
 
   selectTable(tableId, el) {
@@ -513,10 +524,7 @@ const PublicHome = {
     const hiddenInput = this.byId('publicTableSelect');
     if (hiddenInput) hiddenInput.value = tableId;
 
-    document.querySelectorAll('.public-table-card').forEach((card) => {
-      card.classList.remove('selected');
-    });
-
+    document.querySelectorAll('.public-table-card').forEach((card) => card.classList.remove('selected'));
     if (el) el.classList.add('selected');
   },
 
@@ -549,11 +557,7 @@ const PublicHome = {
       deliveryAddress: orderType === 'delivery' ? deliveryAddress : '',
       paymentMethod,
       tableId: orderType === 'dine-in' ? tableId : null,
-      items: this.cart.map((item) => ({
-  menuId: item.menuId,
-  qty: item.qty,
-  price: item.price
-})),
+      items: this.cart.map((item) => ({ menuId: item.menuId, qty: item.qty, price: item.price })),
       subtotal,
       tax,
       discountPercent,
@@ -571,15 +575,9 @@ const PublicHome = {
       `Order #${orderData.orderNumber} Placed`,
       `
         <div class="modal-stack">
-          <div class="panel-muted">
-            <strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}
-          </div>
-          <div class="panel-info">
-            ${estimatedText}
-          </div>
-          <div class="panel-muted">
-            Total: <strong>${App.currency(orderData.total || 0)}</strong>
-          </div>
+          <div class="panel-muted"><strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}</div>
+          <div class="panel-info">${estimatedText}</div>
+          <div class="panel-muted">Total: <strong>${App.currency(orderData.total || 0)}</strong></div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">OK</button>`
@@ -622,11 +620,7 @@ const PublicHome = {
           <strong>Expected Ready:</strong> ${App.formatDateTime(order.estimatedReadyAt)}
         </div>
       `
-      : `
-        <div class="panel-muted">
-          Kitchen has not started cooking yet. Estimated completion time will appear once preparation begins.
-        </div>
-      `;
+      : `<div class="panel-muted">Kitchen has not started cooking yet.</div>`;
 
     App.openModal(
       `Order #${order.id}`,
@@ -656,13 +650,7 @@ const PublicHome = {
     const paymentMethod = this.byId('publicPaymentMethod')?.value || 'cash';
     const tableId = this.byId('publicTableSelect')?.value || '';
 
-    const isValid = this.validateOrderForm({
-      orderType,
-      customerPhone,
-      deliveryAddress,
-      tableId
-    });
-
+    const isValid = this.validateOrderForm({ orderType, customerPhone, deliveryAddress, tableId });
     if (!isValid) return;
 
     App.setButtonLoading(submitBtn, true, 'Placing...', 'Place Order');
@@ -696,6 +684,175 @@ const PublicHome = {
       App.toast(error.message || 'Failed to place order', 'error');
     } finally {
       App.setButtonLoading(submitBtn, false, 'Placing...', 'Place Order');
+    }
+  },
+
+  // ============================================================
+  // REVIEWS / FEEDBACK (NEW)
+  // ============================================================
+
+  getTopReviews(limit = 3) {
+    return [...this.getFeedback()]
+      .sort((a, b) => {
+        const r = Number(b.rating || 0) - Number(a.rating || 0);
+        if (r !== 0) return r;
+        return Number(b.timestamp || 0) - Number(a.timestamp || 0);
+      })
+      .slice(0, limit);
+  },
+
+  renderStars(rating = 0) {
+    const r = Math.max(0, Math.min(5, Number(rating || 0)));
+    const filled = '★'.repeat(r);
+    const empty = '☆'.repeat(5 - r);
+    return `<span style="color:var(--warning);font-size:0.95rem">${filled}${empty}</span>`;
+  },
+
+  renderReviewsSection() {
+    const container = this.byId('publicReviewsSection');
+    if (!container) return;
+
+    const top = this.getTopReviews(3);
+
+    const cards = top.length
+      ? top
+          .map(
+            (r) => `
+        <div class="card" style="background:var(--bg-card);border-radius:var(--radius-lg)">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px">
+            <div style="font-weight:800;color:var(--text-primary)">${App.safeText(r.name || 'Anonymous')}</div>
+            ${this.renderStars(r.rating)}
+          </div>
+          <div style="color:var(--text-secondary);font-size:0.85rem;line-height:1.5">
+            "${App.safeText(r.text || '')}"
+          </div>
+          <div style="margin-top:10px;color:var(--text-muted);font-size:0.75rem">
+            ${App.timeAgo(r.timestamp)}
+          </div>
+        </div>
+      `
+          )
+          .join('')
+      : `<div class="panel-muted">No reviews yet. Be the first to review!</div>`;
+
+    container.innerHTML = `
+      <div class="card" style="margin-top:24px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Customer Reviews</div>
+            <div class="card-subtitle">Top rated feedback from our customers</div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" onclick="PublicHome.openAllReviewsModal()">View All Reviews</button>
+            <button class="btn btn-primary btn-sm" onclick="PublicHome.openAddReviewModal()">Write a Review</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+          ${cards}
+        </div>
+      </div>
+    `;
+  },
+
+  openAllReviewsModal() {
+    const reviews = [...this.getFeedback()].sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+
+    const list = reviews.length
+      ? reviews
+          .map(
+            (r) => `
+        <div class="panel-muted" style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+            <strong>${App.safeText(r.name || 'Anonymous')}</strong>
+            ${this.renderStars(r.rating)}
+          </div>
+          <div style="color:var(--text-secondary)">${App.safeText(r.text || '')}</div>
+          <div class="text-soft">${App.timeAgo(r.timestamp)}</div>
+        </div>
+      `
+          )
+          .join('')
+      : `<div class="empty-state"><p>No reviews yet</p></div>`;
+
+    App.openModal(
+      'All Customer Reviews',
+      `<div class="modal-stack">${list}</div>`,
+      `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`
+    );
+  },
+
+  openAddReviewModal() {
+    this.reviewRating = 5;
+
+    const body = `
+      <div class="form-group">
+        <label class="form-label">Your Name</label>
+        <input class="form-input" id="publicReviewName" placeholder="Name (optional)">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Rating</label>
+        <div id="publicReviewStars" style="display:flex;gap:6px;font-size:1.6rem;cursor:pointer">
+          ${[1,2,3,4,5].map((n) => `<span data-star="${n}" onclick="PublicHome.setReviewRating(${n})">★</span>`).join('')}
+        </div>
+        <input type="hidden" id="publicReviewRating" value="5">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Comment</label>
+        <textarea class="form-textarea" id="publicReviewText" rows="3" placeholder="Write your feedback..."></textarea>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="submitPublicReviewBtn" onclick="PublicHome.submitReview()">Submit</button>
+    `;
+
+    App.openModal('Write a Review', body, footer);
+    this.setReviewRating(5);
+  },
+
+  setReviewRating(rating) {
+    this.reviewRating = Math.max(1, Math.min(5, Number(rating || 5)));
+
+    const hidden = this.byId('publicReviewRating');
+    if (hidden) hidden.value = String(this.reviewRating);
+
+    document.querySelectorAll('#publicReviewStars span').forEach((node) => {
+      const star = Number(node.dataset.star || 0);
+      node.style.color = star <= this.reviewRating ? 'var(--warning)' : 'var(--text-muted)';
+    });
+  },
+
+  async submitReview() {
+    const btn = this.byId('submitPublicReviewBtn');
+    const name = (this.byId('publicReviewName')?.value || '').trim() || 'Anonymous';
+    const rating = parseInt(this.byId('publicReviewRating')?.value || '5', 10);
+    const text = (this.byId('publicReviewText')?.value || '').trim();
+
+    if (!text) {
+      App.toast('Please write a comment', 'warning');
+      return;
+    }
+
+    App.setButtonLoading(btn, true, 'Submitting...', 'Submit');
+
+    try {
+      await Store.request('/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ name, rating, text })
+      });
+
+      await Store.fetchFeedback();
+      App.closeModal();
+      this.renderReviewsSection();
+      App.toast('Thanks for your review!', 'success');
+    } catch (error) {
+      App.toast(error.message || 'Failed to submit review', 'error');
+    } finally {
+      App.setButtonLoading(btn, false, 'Submitting...', 'Submit');
     }
   }
 };

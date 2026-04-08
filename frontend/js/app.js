@@ -2,6 +2,7 @@ const App = {
   validPages: [
     'home',
     'dashboard',
+    'profile',   // ✅ NEW
     'menu',
     'floor',
     'pos',
@@ -15,6 +16,7 @@ const App = {
 
   protectedPages: [
     'dashboard',
+    'profile',   // ✅ NEW
     'menu',
     'floor',
     'pos',
@@ -31,11 +33,13 @@ const App = {
     analytics: ['admin', 'manager'],
     sync: ['admin', 'manager'],
     inventory: ['admin', 'manager', 'kitchen']
+    // profile: no role restriction (any authenticated staff)
   },
 
   pageTitles: {
     home: ['RestaurantOS', 'Explore menu & place your order'],
     dashboard: ['Dashboard', 'Overview & Insights'],
+    profile: ['My Profile', 'View your info, salary & payment history'], // ✅ NEW
     menu: ['Menu Engine', 'Manage food items & pricing'],
     floor: ['Floor Map', 'Table management & status'],
     pos: ['Point of Sale', 'Create & manage orders'],
@@ -59,7 +63,7 @@ const App = {
       this.startKitchenDeadlineWatcher();
 
       const initialPage = this.getPageFromHash() || 'home';
-      this.navigate(initialPage, false);
+      await this.navigate(initialPage, false);
 
       this.initCompleted = true;
     } catch (error) {
@@ -158,7 +162,8 @@ const App = {
     return { allowed: true };
   },
 
-  navigate(page, updateHash = true) {
+  // ✅ UPDATED: async navigate to allow awaiting async page renderers
+  async navigate(page, updateHash = true) {
     if (!this.validPages.includes(page)) page = 'home';
 
     const access = this.canAccessPage(page);
@@ -185,7 +190,7 @@ const App = {
     this.updatePageMeta(page);
 
     try {
-      this.renderPage(page);
+      await this.renderPage(page); // ✅ await
     } catch (error) {
       console.error(`Render failed for page "${page}":`, error);
       this.toast(`Failed to render ${page}`, 'error');
@@ -220,24 +225,43 @@ const App = {
     if (breadcrumbEl) breadcrumbEl.textContent = subtitle;
   },
 
-  renderPage(page) {
+  // ✅ UPDATED: async renderPage
+  async renderPage(page) {
     const renderers = {
-      home: () => PublicHome.render(),
-      dashboard: () => Dashboard.render(),
-      menu: () => MenuEngine.render(),
-      floor: () => FloorMap.render(),
-      pos: () => POS.render(),
-      kitchen: () => Kitchen.render(),
-      inventory: () => Inventory.render(),
-      analytics: () => Analytics.render(),
-      billing: () => Billing.render(),
-      sync: () => SyncCenter.render(),
-      staff: () => StaffPage.load()
+      home: async () => PublicHome.render(),
+      dashboard: async () => Dashboard.render(),
+
+      // ✅ NEW: profile renderer
+      profile: async () => {
+        if (typeof Profile?.load === 'function') {
+          await Profile.load();
+        } else {
+          throw new Error('Profile module not loaded');
+        }
+      },
+
+      menu: async () => MenuEngine.render(),
+      floor: async () => FloorMap.render(),
+      pos: async () => POS.render(),
+      kitchen: async () => Kitchen.render(),
+      inventory: async () => Inventory.render(),
+
+      // ✅ IMPORTANT: preload feedback for admins including hidden
+      analytics: async () => {
+        const user = Store.get('authUser');
+        const canModerate = user && (user.role === 'admin' || user.role === 'manager');
+        await Store.fetchFeedback(!!canModerate);
+        Analytics.render();
+      },
+
+      billing: async () => Billing.render(),
+      sync: async () => SyncCenter.render(),
+      staff: async () => StaffPage.load()
     };
 
     const renderFn = renderers[page];
     if (typeof renderFn === 'function') {
-      renderFn();
+      await renderFn();
     }
   },
 
@@ -245,7 +269,7 @@ const App = {
     const page = Store.getCurrentPage();
 
     const pageDependencies = {
-      home: ['menuItems', 'tables', 'settings', 'orders'],
+      home: ['menuItems', 'tables', 'settings', 'orders', 'feedback'],
       dashboard: ['orders', 'tables', 'menuItems'],
       kitchen: ['orders'],
       billing: ['orders'],
@@ -254,22 +278,27 @@ const App = {
       inventory: ['menuItems'],
       analytics: ['orders', 'feedback'],
       sync: ['orders', 'tables', 'menuItems'],
-      staff: ['staff']
+      staff: ['staff'],
+
+      // ✅ NEW: re-render profile when auth user changes (photo/name/etc.)
+      profile: ['authUser']
     };
 
     const deps = pageDependencies[page] || [];
     if (!deps.includes(key)) return;
 
     try {
+      // Note: renderPage is async, but rerender can stay fire-and-forget
       this.renderPage(page);
     } catch (error) {
       console.error(`Re-render failed for "${page}" after state change "${key}":`, error);
     }
   },
 
-  handleRouteChange() {
+  // ✅ UPDATED: async route handler
+  async handleRouteChange() {
     const page = this.getPageFromHash() || 'home';
-    this.navigate(page, false);
+    await this.navigate(page, false);
   },
 
   toggleSidebar(forceState = null) {
@@ -313,7 +342,7 @@ const App = {
     const badge = this.byId('pendingBadge');
     if (!badge) return;
 
-    const pending = Store.get('orders').filter((order) => order.status === 'pending').length;
+    const pending = (Store.get('orders') || []).filter((order) => order.status === 'pending').length;
     badge.textContent = pending;
     badge.style.display = pending > 0 ? 'inline-block' : 'none';
   },
@@ -330,12 +359,10 @@ const App = {
   getDueSoonOrders() {
     const now = Date.now();
 
-    return Store.get('orders').filter((order) => {
+    return (Store.get('orders') || []).filter((order) => {
       if (order.status !== 'in-progress' || !order.estimatedReadyAt) return false;
-
       const diff = order.estimatedReadyAt - now;
       const minutesLeft = Math.ceil(diff / 60000);
-
       return minutesLeft <= 10 && minutesLeft >= 0;
     });
   },
@@ -343,7 +370,7 @@ const App = {
   getLateOrders() {
     const now = Date.now();
 
-    return Store.get('orders').filter((order) => {
+    return (Store.get('orders') || []).filter((order) => {
       if (order.status !== 'in-progress' || !order.estimatedReadyAt) return false;
       return now > order.estimatedReadyAt;
     });
@@ -353,8 +380,8 @@ const App = {
     const badge = this.byId('notificationCountBadge');
     if (!badge) return;
 
-    const pending = Store.get('orders').filter((order) => order.status === 'pending').length;
-    const lowStock = Store.get('menuItems').filter((item) => item.stock <= 10).length;
+    const pending = (Store.get('orders') || []).filter((order) => order.status === 'pending').length;
+    const lowStock = (Store.get('menuItems') || []).filter((item) => item.stock <= 10).length;
     const syncQueue = Store.getQueue().length;
     const dueSoon = this.getDueSoonOrders().length;
     const late = this.getLateOrders().length;
@@ -471,7 +498,7 @@ const App = {
       const user = await Store.login(email, password);
       this.closeModal();
       this.toast(`Welcome back, ${this.safeText(user.fullName)}`, 'success');
-      this.navigate('dashboard');
+      await this.navigate('dashboard');
     } catch (error) {
       this.toast(error.message || 'Login failed', 'error');
     } finally {
@@ -525,29 +552,35 @@ const App = {
   },
 
   showNotifications() {
-    const pending = Store.get('orders').filter((order) => order.status === 'pending').length;
-    const lowStock = Store.get('menuItems').filter((item) => item.stock <= 10).length;
+    const pending = (Store.get('orders') || []).filter((order) => order.status === 'pending').length;
+    const lowStock = (Store.get('menuItems') || []).filter((item) => item.stock <= 10).length;
     const syncQueue = Store.getQueue().length;
     const dueSoonOrders = this.getDueSoonOrders();
     const lateOrders = this.getLateOrders();
 
     const dueSoonHtml = dueSoonOrders.length
-      ? dueSoonOrders.map((order) => `
+      ? dueSoonOrders
+          .map(
+            (order) => `
           <div class="panel-warning">
             <strong>Order #${order.id}</strong> due in 10 minutes or less
           </div>
-        `).join('')
+        `
+          )
+          .join('')
       : '<div class="panel-muted">No orders due soon</div>';
 
     const lateHtml = lateOrders.length
-      ? lateOrders.map((order) => {
-          const lateMinutes = Math.ceil((Date.now() - order.estimatedReadyAt) / 60000);
-          return `
-            <div class="panel-danger">
-              <strong>Order #${order.id}</strong> late by ${lateMinutes} minute(s)
-            </div>
-          `;
-        }).join('')
+      ? lateOrders
+          .map((order) => {
+            const lateMinutes = Math.ceil((Date.now() - order.estimatedReadyAt) / 60000);
+            return `
+              <div class="panel-danger">
+                <strong>Order #${order.id}</strong> late by ${lateMinutes} minute(s)
+              </div>
+            `;
+          })
+          .join('')
       : '<div class="panel-muted">No overdue orders</div>';
 
     const html = `
@@ -566,11 +599,7 @@ const App = {
       </div>
     `;
 
-    this.openModal(
-      'Notifications',
-      html,
-      `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`
-    );
+    this.openModal('Notifications', html, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
   },
 
   startKitchenDeadlineWatcher() {

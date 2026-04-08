@@ -14,6 +14,17 @@ const Analytics = {
     return document.getElementById(id);
   },
 
+  // ---------------------------
+  // Auth role checks
+  // ---------------------------
+  canModerateFeedback() {
+    const user = Store.get('authUser');
+    return !!user && (user.role === 'admin' || user.role === 'manager');
+  },
+
+  // ---------------------------
+  // Data getters
+  // ---------------------------
   getOrders() {
     return Store.get('orders') || [];
   },
@@ -26,9 +37,12 @@ const Analytics = {
     return Store.get('feedback') || [];
   },
 
+  // ---------------------------
+  // Stats
+  // ---------------------------
   getSummaryData() {
     const completedOrders = this.getCompletedOrders();
-    const feedback = this.getFeedback();
+    const feedback = this.getFeedback().filter((f) => !f.isHidden); // public rating based on visible only
 
     const totalRevenue = completedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
     const totalOrders = completedOrders.length;
@@ -41,12 +55,7 @@ const Analytics = {
           ).toFixed(1)
         : '0.0';
 
-    return {
-      totalRevenue,
-      totalOrders,
-      avgOrderValue,
-      avgRating
-    };
+    return { totalRevenue, totalOrders, avgOrderValue, avgRating };
   },
 
   renderStats() {
@@ -95,11 +104,14 @@ const Analytics = {
           </svg>
         </div>
         <div class="stat-value">${avgRating}</div>
-        <div class="stat-label">Avg Rating</div>
+        <div class="stat-label">Avg Rating (Visible)</div>
       </div>
     `;
   },
 
+  // ---------------------------
+  // Chart controls
+  // ---------------------------
   setChartMode(mode) {
     this.chartMode = mode;
     this.chartOffset = 0;
@@ -137,17 +149,13 @@ const Analytics = {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 1);
-
     return { start, end };
   },
 
   getYearRange(offset = 0) {
     const now = new Date();
     const year = now.getFullYear() + offset;
-    const start = new Date(year, 0, 1);
-    const end = new Date(year + 1, 0, 1);
-
-    return { start, end };
+    return { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) };
   },
 
   getSalesChartData() {
@@ -159,7 +167,6 @@ const Analytics = {
       const data = [];
 
       const cursor = new Date(start);
-
       while (cursor < end) {
         const next = new Date(cursor);
         next.setDate(cursor.getDate() + 1);
@@ -167,12 +174,8 @@ const Analytics = {
         labels.push(cursor.getDate().toString());
 
         const revenue = completedOrders
-          .filter(
-            (order) =>
-              order.timestamp >= cursor.getTime() &&
-              order.timestamp < next.getTime()
-          )
-          .reduce((sum, order) => sum + (order.total || 0), 0);
+          .filter((o) => o.timestamp >= cursor.getTime() && o.timestamp < next.getTime())
+          .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
         cursor.setDate(cursor.getDate() + 1);
@@ -195,17 +198,11 @@ const Analytics = {
         const monthStart = new Date(start.getFullYear(), month, 1);
         const monthEnd = new Date(start.getFullYear(), month + 1, 1);
 
-        labels.push(
-          monthStart.toLocaleDateString('en-US', { month: 'short' })
-        );
+        labels.push(monthStart.toLocaleDateString('en-US', { month: 'short' }));
 
         const revenue = completedOrders
-          .filter(
-            (order) =>
-              order.timestamp >= monthStart.getTime() &&
-              order.timestamp < monthEnd.getTime()
-          )
-          .reduce((sum, order) => sum + (order.total || 0), 0);
+          .filter((o) => o.timestamp >= monthStart.getTime() && o.timestamp < monthEnd.getTime())
+          .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
       }
@@ -229,20 +226,11 @@ const Analytics = {
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayStart.getDate() + 1);
 
-      labels.push(
-        dayStart.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric'
-        })
-      );
+      labels.push(dayStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
 
       const revenue = completedOrders
-        .filter(
-          (order) =>
-            order.timestamp >= dayStart.getTime() &&
-            order.timestamp < dayEnd.getTime()
-        )
-        .reduce((sum, order) => sum + (order.total || 0), 0);
+        .filter((o) => o.timestamp >= dayStart.getTime() && o.timestamp < dayEnd.getTime())
+        .reduce((sum, o) => sum + (o.total || 0), 0);
 
       data.push(revenue);
     }
@@ -289,29 +277,35 @@ const Analytics = {
     }, 50);
   },
 
+  // ---------------------------
+  // Revenue breakdown (unchanged)
+  // ---------------------------
   getRevenueByDate() {
     const completedOrders = this.getCompletedOrders();
     const revenueMap = {};
 
-    completedOrders.forEach((order) => {
-      const date = new Date(order.timestamp).toISOString().slice(0, 10);
-      revenueMap[date] = (revenueMap[date] || 0) + (order.total || 0);
+    completedOrders.forEach((o) => {
+      const date = new Date(o.timestamp).toISOString().slice(0, 10);
+      revenueMap[date] = (revenueMap[date] || 0) + (o.total || 0);
     });
 
-    return Object.entries(revenueMap)
-      .sort((a, b) => new Date(b[0]) - new Date(a[0]));
+    return Object.entries(revenueMap).sort((a, b) => new Date(b[0]) - new Date(a[0]));
   },
 
   openRevenueBreakdown() {
     const revenueList = this.getRevenueByDate();
 
     const listHtml = revenueList.length
-      ? revenueList.map(([date, amount]) => `
+      ? revenueList
+          .map(
+            ([date, amount]) => `
           <div class="analytics-revenue-row" onclick="Analytics.showRevenueForDate('${date}')">
             <span>${date}</span>
             <strong>${App.currency(amount)}</strong>
           </div>
-        `).join('')
+        `
+          )
+          .join('')
       : `<div class="empty-state"><p>No revenue data yet</p></div>`;
 
     const body = `
@@ -331,16 +325,12 @@ const Analytics = {
       <div id="analyticsRevenueDayResult" style="margin-top:16px"></div>
     `;
 
-    App.openModal(
-      'Revenue Breakdown',
-      body,
-      `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`
-    );
+    App.openModal('Revenue Breakdown', body, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
   },
 
   showRevenueForDate(date) {
     const revenueList = this.getRevenueByDate();
-    const found = revenueList.find(([entryDate]) => entryDate === date);
+    const found = revenueList.find(([d]) => d === date);
     const result = this.byId('analyticsRevenueDayResult');
     if (!result) return;
 
@@ -363,10 +353,12 @@ const Analytics = {
       App.toast('Please select a date', 'warning');
       return;
     }
-
     this.showRevenueForDate(input.value);
   },
 
+  // ---------------------------
+  // Top selling items (unchanged)
+  // ---------------------------
   getTopSellingItems() {
     const completedOrders = this.getCompletedOrders();
     const salesMap = {};
@@ -390,33 +382,38 @@ const Analytics = {
     const maxSales = topItems.length > 0 ? topItems[0][1] : 1;
 
     if (!topItems.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <p>No sales data yet</p>
-        </div>
-      `;
+      container.innerHTML = `<div class="empty-state"><p>No sales data yet</p></div>`;
       return;
     }
 
     container.innerHTML = topItems
-      .map(([name, qty], index) => `
+      .map(
+        ([name, qty], index) => `
         <div class="analytics-top-item">
           <span class="analytics-rank">#${index + 1}</span>
-
           <div class="analytics-top-item-main">
             <div class="analytics-top-item-name">${App.safeText(name)}</div>
             <div class="stock-bar analytics-top-item-bar">
-              <div
-                class="stock-bar-fill"
-                style="width:${(qty / maxSales) * 100}%;background:var(--accent)"
-              ></div>
+              <div class="stock-bar-fill" style="width:${(qty / maxSales) * 100}%;background:var(--accent)"></div>
             </div>
           </div>
-
           <span class="badge badge-accent">${qty} sold</span>
         </div>
-      `)
+      `
+      )
       .join('');
+  },
+
+  // ============================================================
+  // FEEDBACK (UPDATED WITH MODERATION)
+  // ============================================================
+  async ensureFeedbackLoadedForAdmin() {
+    // Admin/manager should see hidden feedback too
+    if (this.canModerateFeedback()) {
+      await Store.fetchFeedback(true);
+    } else {
+      await Store.fetchFeedback(false);
+    }
   },
 
   renderFeedback() {
@@ -426,17 +423,11 @@ const Analytics = {
     const feedback = [...this.getFeedback()].sort((a, b) => b.timestamp - a.timestamp);
 
     if (!feedback.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <p>No feedback yet</p>
-        </div>
-      `;
+      container.innerHTML = `<div class="empty-state"><p>No feedback yet</p></div>`;
       return;
     }
 
-    container.innerHTML = feedback
-      .map((item) => this.renderFeedbackItem(item))
-      .join('');
+    container.innerHTML = feedback.map((item) => this.renderFeedbackItem(item)).join('');
   },
 
   renderFeedbackItem(item) {
@@ -444,13 +435,71 @@ const Analytics = {
     const filled = '★'.repeat(rating);
     const empty = '☆'.repeat(Math.max(5 - rating, 0));
 
+    const canMod = this.canModerateFeedback();
+    const hiddenBadge = item.isHidden ? `<span class="badge badge-warning">Hidden</span>` : '';
+
+    const modButtons = canMod
+      ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-secondary btn-xs" onclick="Analytics.toggleHideFeedback('${item.id}', ${!item.isHidden})">
+            ${item.isHidden ? 'Unhide' : 'Hide'}
+          </button>
+          <button class="btn btn-danger btn-xs" onclick="Analytics.deleteFeedback('${item.id}')">
+            Delete
+          </button>
+        </div>
+      `
+      : '';
+
     return `
       <div class="feedback-item">
-        <div class="feedback-stars">${filled}${empty}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div class="feedback-stars">${filled}${empty}</div>
+          ${hiddenBadge}
+        </div>
         <div class="feedback-text">"${App.safeText(item.text)}"</div>
         <div class="feedback-meta">— ${App.safeText(item.name || 'Anonymous')} · ${App.timeAgo(item.timestamp)}</div>
+        ${modButtons}
       </div>
     `;
+  },
+
+  async toggleHideFeedback(id, shouldHide) {
+    try {
+      await Store.request(`/feedback/${id}/hide`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isHidden: shouldHide })
+      });
+
+      await Store.fetchFeedback(true);
+      this.renderFeedback();
+      App.toast(shouldHide ? 'Feedback hidden' : 'Feedback unhidden', 'success');
+    } catch (error) {
+      App.toast(error.message || 'Failed to update feedback visibility', 'error');
+    }
+  },
+
+  deleteFeedback(id) {
+    App.openModal(
+      'Delete Review',
+      `<p class="text-muted">Are you sure you want to permanently delete this review?</p>`,
+      `
+        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="Analytics.confirmDeleteFeedback('${id}')">Delete</button>
+      `
+    );
+  },
+
+  async confirmDeleteFeedback(id) {
+    try {
+      await Store.request(`/feedback/${id}`, { method: 'DELETE' });
+      await Store.fetchFeedback(true);
+      this.renderFeedback();
+      App.closeModal();
+      App.toast('Review deleted', 'warning');
+    } catch (error) {
+      App.toast(error.message || 'Failed to delete review', 'error');
+    }
   },
 
   addFeedback() {
@@ -466,11 +515,7 @@ const Analytics = {
           ${[1, 2, 3, 4, 5]
             .map(
               (rating) => `
-                <span
-                  class="star"
-                  data-rating="${rating}"
-                  onclick="Analytics.setRating(${rating})"
-                >★</span>
+                <span class="star" data-rating="${rating}" onclick="Analytics.setRating(${rating})">★</span>
               `
             )
             .join('')}
@@ -510,7 +555,6 @@ const Analytics = {
       App.toast('Please enter feedback text', 'error');
       return false;
     }
-
     return true;
   },
 
@@ -536,7 +580,8 @@ const Analytics = {
         body: JSON.stringify(payload)
       });
 
-      await Store.fetchFeedback();
+      // refresh feedback list after adding
+      await this.ensureFeedbackLoadedForAdmin();
       App.closeModal();
       this.renderFeedback();
       App.toast('Feedback added', 'success');
@@ -545,9 +590,5 @@ const Analytics = {
     } finally {
       App.setButtonLoading(saveBtn, false, 'Saving...', 'Save');
     }
-  },
-
-  getFeedback() {
-    return Store.get('feedback') || [];
   }
 };
