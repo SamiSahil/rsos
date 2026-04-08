@@ -1,4 +1,4 @@
-const CACHE_NAME = 'restaurantos-v5'; // change version when needed
+const CACHE_NAME = 'restaurantos-v6'; // change version when needed
 
 const STATIC_ASSETS = [
   './',
@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   './js/app.js',
   './js/main.js',
 
+  './js/modules/profile.js',
   './js/modules/dashboard.js',
   './js/modules/menuEngine.js',
   './js/modules/floorMap.js',

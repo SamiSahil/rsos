@@ -8,11 +8,12 @@ const Profile = {
     return document.getElementById(id);
   },
 
-  defaultMonth() {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 7);
-  },
+ defaultMonth() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0'); // current month (local)
+  return `${y}-${m}`;
+},
 
   formatMonthLabel(monthStr) {
     if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return monthStr || '';
@@ -24,30 +25,37 @@ const Profile = {
     return Store.get('authUser');
   },
 
-  async load() {
-    if (this.isLoading) return;
-    this.isLoading = true;
+async load() {
+  if (this.isLoading) return;
+  this.isLoading = true;
 
-    try {
-      if (!this.month) this.month = this.defaultMonth();
-      await this.fetchMonthData();
-      this.render();
-    } catch (e) {
-      App.toast(e.message || 'Failed to load profile', 'error');
-    } finally {
-      this.isLoading = false;
-    }
-  },
+  const page = this.byId('page-profile');
+  if (page) {
+    page.innerHTML = `<div class="empty-state"><p>Loading profile...</p></div>`;
+  }
 
-  async fetchMonthData() {
-    const month = this.month || this.defaultMonth();
+  try {
+    if (!this.month) this.month = this.defaultMonth();
+    await this.fetchMonthData();
+    this.render();
+  } catch (e) {
+    App.toast(e.message || 'Failed to load profile', 'error');
+  } finally {
+    this.isLoading = false;
+  }
+},
 
-    const summaryJson = await Store.request(`/payroll/summary/me?month=${encodeURIComponent(month)}`);
-    const paymentsJson = await Store.request(`/payroll/payments/me?month=${encodeURIComponent(month)}`);
+async fetchMonthData() {
+  const month = this.month || this.defaultMonth();
 
-    this.summary = summaryJson.data;
-    this.payments = paymentsJson.data || [];
-  },
+  const [summaryJson, paymentsJson] = await Promise.all([
+    Store.request(`/payroll/summary/me?month=${encodeURIComponent(month)}`),
+    Store.request(`/payroll/payments/me?month=${encodeURIComponent(month)}`)
+  ]);
+
+  this.summary = summaryJson.data;
+  this.payments = paymentsJson.data || [];
+},
 
   async setMonth(value) {
     this.month = value || this.defaultMonth();
@@ -62,91 +70,144 @@ const Profile = {
     return `<div class="staff-profile-initials-lg">${App.safeText((user?.fullName || 'ST').slice(0,2).toUpperCase())}</div>`;
   },
 
-  render() {
-    const page = this.byId('page-profile');
-    if (!page) return;
+ render() {
+  const page = this.byId('page-profile');
+  if (!page) return;
 
-    const user = this.getMe();
-    if (!user) {
-      page.innerHTML = `<div class="empty-state"><p>Please log in</p></div>`;
-      return;
-    }
+  const user = this.getMe();
+  if (!user) {
+    page.innerHTML = `<div class="empty-state"><p>Please log in</p></div>`;
+    return;
+  }
 
-    const monthLabel = this.formatMonthLabel(this.month);
+  const s = this.summary || {};
+  const monthLabel = this.formatMonthLabel(this.month);
 
-    const s = this.summary || {};
-    const paymentsHtml = this.payments.length
-      ? this.payments.map(p => `
-          <div class="panel-muted" style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
-            <div>
-              <div style="font-weight:900">${App.safeText(p.receiptNumber)}</div>
-              <div class="text-soft">${new Date(p.paidAt).toLocaleString()}</div>
-              ${p.note ? `<div class="text-soft">Note: ${App.safeText(p.note)}</div>` : ''}
-            </div>
-            <div style="text-align:right">
-              <div style="font-weight:900;color:var(--accent)">${App.currency(p.amount)}</div>
-              <button class="btn btn-secondary btn-xs" onclick='Profile.openSalaryReceipt(${JSON.stringify(p)})'>Receipt</button>
-            </div>
-          </div>
-        `).join('')
-      : `<div class="panel-muted">No salary payments found for this month.</div>`;
-
-    page.innerHTML = `
-      <div class="card">
-        <div class="staff-profile-header">
-          ${this.renderAvatar(user)}
-          <div class="staff-profile-title">
-            <div class="staff-profile-name">${App.safeText(user.fullName)}</div>
-            <div class="staff-profile-meta">
-              ${App.safeText(user.role)} • ${App.safeText(user.status)}<br>
-              ${App.safeText(user.email)}
-            </div>
+  const payments = Array.isArray(this.payments) ? this.payments : [];
+  const paymentsHtml = payments.length
+    ? payments.map(p => `
+        <div class="profile-payment-row">
+          <div class="profile-payment-left">
+            <div class="profile-payment-receipt">${App.safeText(p.receiptNumber)}</div>
+            <div class="profile-payment-time">${new Date(p.paidAt).toLocaleString()}</div>
+            ${p.note ? `<div class="profile-payment-note">Note: ${App.safeText(p.note)}</div>` : ''}
           </div>
 
-          <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+          <div class="profile-payment-right">
+            <div class="profile-payment-amount">${App.currency(p.amount)}</div>
+            <button class="btn btn-secondary btn-xs" onclick='Profile.openSalaryReceipt(${JSON.stringify(p)})'>Receipt</button>
+          </div>
+        </div>
+      `).join('')
+    : `<div class="panel-muted">No salary payments found for this month.</div>`;
+
+  page.innerHTML = `
+    <div class="profile-layout">
+      <!-- HEADER -->
+      <div class="card profile-hero-card">
+        <div class="profile-hero">
+          <div class="profile-hero-left">
+            ${this.renderAvatar(user)}
+            <div class="profile-hero-title">
+              <div class="profile-name">${App.safeText(user.fullName)}</div>
+
+              <div class="profile-badges">
+                <span class="badge badge-accent">${App.safeText(user.role)}</span>
+                <span class="badge ${user.status === 'active' ? 'badge-success' : user.status === 'on-leave' ? 'badge-warning' : 'badge-danger'}">
+                  ${App.safeText(user.status)}
+                </span>
+              </div>
+
+              <div class="profile-email">${App.safeText(user.email)}</div>
+            </div>
+          </div>
+
+          <div class="profile-hero-actions">
             <button class="btn btn-secondary btn-sm" onclick="Profile.openChangePhoto()">Change Photo</button>
             <button class="btn btn-secondary btn-sm" onclick="Profile.openChangePassword()">Change Password</button>
           </div>
         </div>
+      </div>
 
-        <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
-          <div class="panel-muted"><strong>Phone:</strong> ${App.safeText(user.phone || '-')}</div>
-          <div class="panel-muted"><strong>Address:</strong> ${App.safeText(user.address || '-')}</div>
-          <div class="panel-muted"><strong>Join Date:</strong> ${user.joinDate ? new Date(user.joinDate).toLocaleDateString() : '-'}</div>
-          <div class="panel-muted"><strong>Monthly Salary:</strong> ${App.currency(user.monthlySalary || 0)}</div>
-          <div class="panel-muted"><strong>Working Days:</strong> ${Number(user.workingDays || 0)}</div>
-        </div>
+      <div class="profile-grid">
+        <!-- LEFT COLUMN -->
+        <div class="profile-col">
+          <!-- PERSONAL INFO -->
+          <div class="card profile-card">
+            <div class="profile-card-header">
+              <div>
+                <div class="card-title">Personal Information</div>
+                <div class="card-subtitle">Your basic details</div>
+              </div>
+            </div>
 
-        <div style="margin-top:18px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
-          <div>
-            <div style="font-weight:900">Payroll Overview</div>
-            <div class="text-soft">Rule: Present=100%, Leave=50%, Absent=0% (decimals kept)</div>
+            <div class="profile-info-grid">
+              <div class="profile-info-item"><span>Phone</span><strong>${App.safeText(user.phone || '-')}</strong></div>
+              <div class="profile-info-item"><span>Address</span><strong>${App.safeText(user.address || '-')}</strong></div>
+              <div class="profile-info-item"><span>Join Date</span><strong>${user.joinDate ? new Date(user.joinDate).toLocaleDateString() : '-'}</strong></div>
+              <div class="profile-info-item"><span>Monthly Salary</span><strong>${App.currency(user.monthlySalary || 0)}</strong></div>
+              <div class="profile-info-item"><span>Working Days</span><strong>${Number(user.workingDays || 0)}</strong></div>
+              <div class="profile-info-item"><span>Last Login</span><strong>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : '-'}</strong></div>
+            </div>
           </div>
 
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <label class="text-soft">Month</label>
-            <input class="form-input" style="width:auto" type="month" value="${this.month}" onchange="Profile.setMonth(this.value)">
+          <!-- PAYROLL OVERVIEW -->
+          <div class="card profile-card">
+            <div class="profile-card-header">
+              <div>
+                <div class="card-title">Payroll Overview</div>
+                <div class="card-subtitle">Rule: Present=100%, Leave=50%, Absent=0% (decimals kept)</div>
+              </div>
+
+              <div class="profile-month-picker">
+                <label class="text-soft">Month</label>
+                <input class="form-input" style="width:auto" type="month" value="${this.month}" onchange="Profile.setMonth(this.value)">
+              </div>
+            </div>
+
+            <div class="profile-stats-grid">
+              <div class="profile-stat"><span>Present</span><strong>${Number(s.presentDays || 0)}</strong></div>
+              <div class="profile-stat"><span>Leave (½)</span><strong>${Number(s.leaveDays || 0)}</strong></div>
+              <div class="profile-stat"><span>Paid Days (Eq.)</span><strong>${Number(s.paidEquivalentDays || 0).toFixed(1)}</strong></div>
+              <div class="profile-stat"><span>Unpaid (Eq.)</span><strong>${Number(s.unpaidEquivalentDays || 0).toFixed(1)}</strong></div>
+            </div>
+
+            <div class="profile-money-grid">
+              <div class="profile-money profile-money-info">
+                <span>Payable (${App.safeText(monthLabel)})</span>
+                <strong>${App.currency(s.payableAmount || 0)}</strong>
+              </div>
+              <div class="profile-money profile-money-success">
+                <span>Paid</span>
+                <strong>${App.currency(s.paidAmount || 0)}</strong>
+              </div>
+              <div class="profile-money profile-money-danger">
+                <span>Due</span>
+                <strong>${App.currency(s.dueAmount || 0)}</strong>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-          <div class="panel-muted"><strong>Present:</strong> ${Number(s.presentDays || 0)}</div>
-          <div class="panel-muted"><strong>Leave:</strong> ${Number(s.leaveDays || 0)} (50%)</div>
-          <div class="panel-muted"><strong>Paid Days (Eq.):</strong> ${Number(s.paidEquivalentDays || 0).toFixed(1)}</div>
-          <div class="panel-muted"><strong>Unpaid (Eq.):</strong> ${Number(s.unpaidEquivalentDays || 0).toFixed(1)}</div>
+        <!-- RIGHT COLUMN -->
+        <div class="profile-col">
+          <div class="card profile-card">
+            <div class="profile-card-header">
+              <div>
+                <div class="card-title">Salary Payment History (Proof)</div>
+                <div class="card-subtitle">Receipts for ${App.safeText(monthLabel)}</div>
+              </div>
+            </div>
 
-          <div class="panel-info"><strong>Payable (${monthLabel}):</strong> ${App.currency(s.payableAmount || 0)}</div>
-          <div class="panel-muted"><strong>Paid:</strong> ${App.currency(s.paidAmount || 0)}</div>
-          <div class="panel-danger"><strong>Due:</strong> ${App.currency(s.dueAmount || 0)}</div>
-        </div>
-
-        <div style="margin-top:18px">
-          <div style="font-weight:900;margin-bottom:10px">Salary Payment History (Proof)</div>
-          <div class="modal-stack">${paymentsHtml}</div>
+            <div class="profile-payments-list">
+              ${paymentsHtml}
+            </div>
+          </div>
         </div>
       </div>
-    `;
-  },
+    </div>
+  `;
+},
 
   openChangePhoto() {
     App.openModal(

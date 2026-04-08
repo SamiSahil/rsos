@@ -3,6 +3,19 @@ import Table from "../models/Table.js";
 import MenuItem from "../models/MenuItem.js";
 import { getIO } from "../config/socket.js";
 
+const STAFF_ROLES = ["admin", "manager", "cashier", "kitchen", "waiter"];
+
+const emitToStaff = (io, event, payload) => {
+  STAFF_ROLES.forEach((role) => io.to(`role:${role}`).emit(event, payload));
+};
+
+const emitStockToEveryone = (io, stockUpdates) => {
+  // Staff rooms
+  STAFF_ROLES.forEach((role) => io.to(`role:${role}`).emit("stock:updated", stockUpdates));
+  // Public room (menu stock visibility is okay for customers)
+  io.to("public").emit("stock:updated", stockUpdates);
+};
+
 const generateNextOrderNumber = async () => {
   const lastOrder = await Order.findOne().sort({ orderNumber: -1 });
   return lastOrder ? lastOrder.orderNumber + 1 : 1001;
@@ -27,7 +40,7 @@ export const getOrders = async (req, res, next) => {
           String(order.orderNumber).includes(search) ||
           String(order.table?.number || "").includes(search) ||
           String(order.customerPhone || "").includes(search) ||
-          String(order.customerName || "").toLowerCase().includes(search.toLowerCase())
+          String(order.customerName || "").toLowerCase().includes(String(search).toLowerCase())
       );
     }
 
@@ -130,7 +143,7 @@ export const createOrder = async (req, res, next) => {
         throw new Error(`Insufficient stock for ${menuItem.name}`);
       }
 
-      // Preserve price from payload if present (important for offline sync consistency)
+      // Preserve price from payload if present (offline sync consistency)
       const unitPrice =
         item.price != null && !Number.isNaN(Number(item.price))
           ? Number(item.price)
@@ -198,15 +211,15 @@ export const createOrder = async (req, res, next) => {
 
     const io = getIO();
 
-    io.emit("order:new", populatedOrder);
-    io.emit("stock:updated", stockUpdates);
+    // IMPORTANT: DO NOT emit orders to public sockets
+    emitToStaff(io, "order:new", populatedOrder);
 
-    io.to("role:admin").emit("order:new", populatedOrder);
-    io.to("role:manager").emit("order:new", populatedOrder);
-    io.to("role:cashier").emit("order:new", populatedOrder);
-    io.to("role:kitchen").emit("order:new", populatedOrder);
-    io.to("public").emit("stock:updated", stockUpdates);
+    // Stock updates can go to public (customers need stock/availability)
+    if (stockUpdates.length) {
+      emitStockToEveryone(io, stockUpdates);
+    }
 
+    // Table updates are safe to broadcast (table availability is public)
     if (table) {
       io.emit("table:updated", table);
       io.to("public").emit("table:updated", table);
@@ -284,13 +297,9 @@ export const updateOrderStatus = async (req, res, next) => {
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-    io.emit("order:updated", updatedOrder);
 
-    io.to("role:admin").emit("order:updated", updatedOrder);
-    io.to("role:manager").emit("order:updated", updatedOrder);
-    io.to("role:cashier").emit("order:updated", updatedOrder);
-    io.to("role:kitchen").emit("order:updated", updatedOrder);
-    io.to("public").emit("order:updated", updatedOrder);
+    // IMPORTANT: DO NOT emit orders to public sockets
+    emitToStaff(io, "order:updated", updatedOrder);
 
     if (table) {
       io.emit("table:updated", table);
@@ -354,11 +363,12 @@ export const deleteOrder = async (req, res, next) => {
     await order.deleteOne();
 
     const io = getIO();
-    io.emit("order:deleted", { _id: req.params.id, orderNumber: order.orderNumber });
+
+    // IMPORTANT: DO NOT emit orders to public sockets
+    emitToStaff(io, "order:deleted", { _id: req.params.id, orderNumber: order.orderNumber });
 
     if (stockUpdates.length) {
-      io.emit("stock:updated", stockUpdates);
-      io.to("public").emit("stock:updated", stockUpdates);
+      emitStockToEveryone(io, stockUpdates);
     }
 
     if (table) {
@@ -397,11 +407,9 @@ export const updateBillingStatus = async (req, res, next) => {
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-    io.emit("order:updated", updatedOrder);
 
-    io.to("role:admin").emit("order:updated", updatedOrder);
-    io.to("role:manager").emit("order:updated", updatedOrder);
-    io.to("role:cashier").emit("order:updated", updatedOrder);
+    // IMPORTANT: billing/order updates only to staff, not public
+    emitToStaff(io, "order:updated", updatedOrder);
 
     res.json({
       success: true,

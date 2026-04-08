@@ -54,17 +54,17 @@ const salaryPaymentSchema = new mongoose.Schema(
     },
 
     // Snapshot = strong proof even if salary changes later
-    snapshot: {
-      monthlySalary: Number,
-      workingDays: Number,
-      presentDays: Number,
-      leaveDays: Number,
-      paidDays: Number,
-      absentDays: Number,
-      payableAmount: Number,
-      paidBefore: Number,
-      dueBefore: Number
-    }
+   snapshot: {
+  monthlySalary: Number,
+  workingDays: Number,
+  presentDays: Number,
+  leaveDays: Number,
+  paidEquivalentDays: Number,
+  unpaidEquivalentDays: Number,
+  payableAmount: Number,
+  paidBefore: Number,
+  dueBefore: Number
+}
   },
   { timestamps: true }
 );

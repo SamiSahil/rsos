@@ -23,11 +23,12 @@ const StaffPage = {
   // ---------------------------
   // Payroll month
   // ---------------------------
-  getDefaultPayrollMonth() {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 7);
-  },
+ getDefaultPayrollMonth() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0'); // current month (local)
+  return `${y}-${m}`;
+},
 
   ensurePayrollMonth() {
     if (!this.payrollMonth) this.payrollMonth = this.getDefaultPayrollMonth();

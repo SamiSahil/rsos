@@ -96,7 +96,7 @@
           My Profile
         </a>
 
-        <a class="nav-item active" data-page="dashboard" href="#/dashboard" onclick="event.preventDefault(); App.navigate('dashboard')">
+        <a class="nav-item" data-page="dashboard" href="#/dashboard" onclick="event.preventDefault(); App.navigate('dashboard')">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <rect x="3" y="3" width="7" height="7" rx="1" />
             <rect x="14" y="3" width="7" height="7" rx="1" />
@@ -242,13 +242,10 @@
       <!-- PAGE CONTAINER -->
       <div class="page-container">
         <!-- PUBLIC HOME -->
-        <div class="page-view" id="page-home"></div>
-
-        <!-- ✅ NEW: PROFILE PAGE -->
+        <div class="page-view active" id="page-home"></div>
         <div class="page-view" id="page-profile"></div>
-
         <!-- DASHBOARD -->
-        <div class="page-view active" id="page-dashboard">
+        <div class="page-view" id="page-dashboard">
           <div class="stats-grid" id="dashboardStats"></div>
 
           <div class="charts-grid" style="gap: 24px;">

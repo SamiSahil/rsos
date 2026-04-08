@@ -1,6 +1,11 @@
 const Dashboard = {
-  chartMode: 'week', // 'week' | 'month'
-  chartOffset: 0,    // 0 = current period, -1 = previous, 1 = next
+  // Presets:
+  // today | yesterday | thisWeek | lastWeek | thisMonth | lastMonth | custom
+  rangePreset: 'thisWeek',
+
+  // for custom range
+  customStart: '',
+  customEnd: '',
 
   render() {
     this.renderStats();
@@ -12,6 +17,9 @@ const Dashboard = {
     return document.getElementById(id);
   },
 
+  // ---------------------------
+  // Data sources
+  // ---------------------------
   getOrders() {
     return Store.get('orders') || [];
   },
@@ -24,6 +32,9 @@ const Dashboard = {
     return Store.get('tables') || [];
   },
 
+  // ---------------------------
+  // Basic stats (unchanged: "Today")
+  // ---------------------------
   getTodayRange() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -129,31 +140,47 @@ const Dashboard = {
     `;
   },
 
-  setChartMode(mode) {
-    this.chartMode = mode;
-    this.chartOffset = 0;
-    this.renderCharts();
+  // ============================================================
+  // NEW: Date Range Picker logic
+  // ============================================================
+
+  // Helpers
+  startOfDay(date = new Date()) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
   },
 
-  prevPeriod() {
-    this.chartOffset -= 1;
-    this.renderCharts();
+  addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
   },
 
-  nextPeriod() {
-    if (this.chartOffset < 0) {
-      this.chartOffset += 1;
-      this.renderCharts();
-    }
+  toISODateInputValue(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
   },
 
-  getWeekRange(offset = 0) {
+  formatRangeTitle(start, endExclusive) {
+    // endExclusive is next-day boundary; show inclusive end date
+    const endInclusive = new Date(endExclusive.getTime() - 1);
+    const s = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const e = endInclusive.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const y1 = start.getFullYear();
+    const y2 = endInclusive.getFullYear();
+    if (y1 === y2) return `${s} — ${e}, ${y1}`;
+    return `${s}, ${y1} — ${e}, ${y2}`;
+  },
+
+  getWeekRange(offsetWeeks = 0) {
     const now = new Date();
-    const day = now.getDay(); // 0=Sun, 1=Mon...
+    const day = now.getDay(); // 0=Sun
     const mondayOffset = day === 0 ? -6 : 1 - day;
 
     const start = new Date(now);
-    start.setDate(now.getDate() + mondayOffset + offset * 7);
+    start.setDate(now.getDate() + mondayOffset + offsetWeeks * 7);
     start.setHours(0, 0, 0, 0);
 
     const end = new Date(start);
@@ -162,84 +189,208 @@ const Dashboard = {
     return { start, end };
   },
 
-  getMonthRange(offset = 0) {
+  getMonthRange(offsetMonths = 0) {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 1);
-
+    const start = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + offsetMonths + 1, 1);
     return { start, end };
+  },
+
+  compressLabels(labels, maxLabels = 14) {
+    if (!labels || labels.length <= maxLabels) return labels;
+    const step = Math.ceil(labels.length / maxLabels);
+    return labels.map((l, i) => (i % step === 0 ? l : ''));
+  },
+
+  // Preset setter
+  setRangePreset(preset) {
+    this.rangePreset = preset || 'thisWeek';
+
+    // When switching to custom, initialize default if empty
+    if (this.rangePreset === 'custom') {
+      if (!this.customStart || !this.customEnd) {
+        const end = this.startOfDay(new Date());
+        const start = this.addDays(end, -6); // last 7 days
+        this.customStart = this.toISODateInputValue(start);
+        this.customEnd = this.toISODateInputValue(end);
+      }
+    }
+
+    this.renderCharts();
+  },
+
+  setCustomStart(value) {
+    this.customStart = value || '';
+  },
+
+  setCustomEnd(value) {
+    this.customEnd = value || '';
+  },
+
+  applyCustomRange() {
+    if (!this.customStart || !this.customEnd) {
+      App.toast('Please select both start and end dates', 'warning');
+      return;
+    }
+
+    const start = this.startOfDay(new Date(this.customStart));
+    const end = this.startOfDay(new Date(this.customEnd));
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      App.toast('Invalid custom dates', 'error');
+      return;
+    }
+
+    if (end.getTime() < start.getTime()) {
+      App.toast('End date cannot be before start date', 'warning');
+      return;
+    }
+
+    this.renderCharts();
+  },
+
+  getSelectedRange() {
+    const nowStart = this.startOfDay(new Date());
+
+    if (this.rangePreset === 'today') {
+      const start = nowStart;
+      const end = this.addDays(start, 1);
+      return { start, end, granularity: 'hour', title: 'Today', subtitle: 'Hourly revenue for today' };
+    }
+
+    if (this.rangePreset === 'yesterday') {
+      const end = nowStart;
+      const start = this.addDays(end, -1);
+      return { start, end, granularity: 'hour', title: 'Yesterday', subtitle: 'Hourly revenue for yesterday' };
+    }
+
+    if (this.rangePreset === 'thisWeek') {
+      const { start, end } = this.getWeekRange(0);
+      return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily revenue for this week' };
+    }
+
+    if (this.rangePreset === 'lastWeek') {
+      const { start, end } = this.getWeekRange(-1);
+      return { start, end, granularity: 'day', title: 'Last Week', subtitle: 'Daily revenue for last week' };
+    }
+
+    if (this.rangePreset === 'thisMonth') {
+      const { start, end } = this.getMonthRange(0);
+      const label = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return { start, end, granularity: 'day', title: label, subtitle: 'Daily revenue for this month' };
+    }
+
+    if (this.rangePreset === 'lastMonth') {
+      const { start, end } = this.getMonthRange(-1);
+      const label = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return { start, end, granularity: 'day', title: label, subtitle: 'Daily revenue for last month' };
+    }
+
+    // custom
+    if (this.rangePreset === 'custom') {
+      const start = this.customStart ? this.startOfDay(new Date(this.customStart)) : this.startOfDay(new Date());
+      const endInclusive = this.customEnd ? this.startOfDay(new Date(this.customEnd)) : this.startOfDay(new Date());
+      const end = this.addDays(endInclusive, 1); // make end exclusive
+
+      // If same day -> hourly, else daily
+      const isSameDay = start.getTime() === endInclusive.getTime();
+      const granularity = isSameDay ? 'hour' : 'day';
+
+      return {
+        start,
+        end,
+        granularity,
+        title: this.formatRangeTitle(start, end),
+        subtitle: granularity === 'hour' ? 'Hourly revenue for selected day' : 'Daily revenue for selected range'
+      };
+    }
+
+    // fallback
+    const { start, end } = this.getWeekRange(0);
+    return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily revenue for this week' };
   },
 
   getRevenueChartData() {
     const completedOrders = this.getOrders().filter((order) => order.status === 'completed');
+    const range = this.getSelectedRange();
 
-    if (this.chartMode === 'month') {
-      const { start, end } = this.getMonthRange(this.chartOffset);
+    const startMs = range.start.getTime();
+    const endMs = range.end.getTime();
+
+    const inRange = completedOrders.filter((o) => o.timestamp >= startMs && o.timestamp < endMs);
+
+    if (range.granularity === 'hour') {
       const labels = [];
       const data = [];
 
-      const cursor = new Date(start);
+      for (let h = 0; h < 24; h++) {
+        const bucketStart = new Date(range.start);
+        bucketStart.setHours(h, 0, 0, 0);
 
-      while (cursor < end) {
-        const next = new Date(cursor);
-        next.setDate(cursor.getDate() + 1);
+        const bucketEnd = new Date(bucketStart);
+        bucketEnd.setHours(h + 1, 0, 0, 0);
 
-        labels.push(cursor.getDate().toString());
+        labels.push(
+          bucketStart.toLocaleTimeString('en-US', { hour: '2-digit' })
+        );
 
-        const revenue = completedOrders
-          .filter(
-            (order) =>
-              order.timestamp >= cursor.getTime() &&
-              order.timestamp < next.getTime()
-          )
-          .reduce((sum, order) => sum + (order.total || 0), 0);
+        const revenue = inRange
+          .filter((o) => o.timestamp >= bucketStart.getTime() && o.timestamp < bucketEnd.getTime())
+          .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
-        cursor.setDate(cursor.getDate() + 1);
       }
 
+      // keep labels compact
+      const compactLabels = labels.map((l, i) => (i % 3 === 0 ? l : '')); // show every 3 hours
+
       return {
-        labels,
+        labels: compactLabels,
         data,
-        title: start.toLocaleDateString('en-US', {
-          month: 'long',
-          year: 'numeric'
-        }),
-        subtitle: 'Daily revenue for selected month'
+        title: range.title,
+        subtitle: range.subtitle
       };
     }
 
-    const { start } = this.getWeekRange(this.chartOffset);
+    // daily buckets
     const labels = [];
     const data = [];
 
-    for (let i = 0; i < 7; i++) {
-      const dayStart = new Date(start);
-      dayStart.setDate(start.getDate() + i);
+    const cursor = new Date(range.start);
+    while (cursor.getTime() < range.end.getTime()) {
+      const next = new Date(cursor);
+      next.setDate(cursor.getDate() + 1);
 
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayStart.getDate() + 1);
+      // label style depends on preset length
+      let label = cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-      labels.push(
-        dayStart.toLocaleDateString('en-US', { weekday: 'short' })
-      );
+      // For "thisWeek/lastWeek", show weekday
+      if (this.rangePreset === 'thisWeek' || this.rangePreset === 'lastWeek') {
+        label = cursor.toLocaleDateString('en-US', { weekday: 'short' });
+      }
 
-      const revenue = completedOrders
-        .filter(
-          (order) =>
-            order.timestamp >= dayStart.getTime() &&
-            order.timestamp < dayEnd.getTime()
-        )
-        .reduce((sum, order) => sum + (order.total || 0), 0);
+      // For month presets, show day-of-month
+      if (this.rangePreset === 'thisMonth' || this.rangePreset === 'lastMonth') {
+        label = String(cursor.getDate());
+      }
+
+      labels.push(label);
+
+      const revenue = inRange
+        .filter((o) => o.timestamp >= cursor.getTime() && o.timestamp < next.getTime())
+        .reduce((sum, o) => sum + (o.total || 0), 0);
 
       data.push(revenue);
+      cursor.setDate(cursor.getDate() + 1);
     }
 
+    const compactLabels = this.compressLabels(labels, 14);
+
     return {
-      labels,
+      labels: compactLabels,
       data,
-      title: this.chartOffset === 0 ? 'This Week' : `Week ${this.chartOffset < 0 ? 'Past' : 'Future'}`,
-      subtitle: 'Daily revenue for selected week'
+      title: range.title,
+      subtitle: range.subtitle
     };
   },
 
@@ -271,16 +422,40 @@ const Dashboard = {
     if (titleEl) titleEl.textContent = chartData.title;
     if (subtitleEl) subtitleEl.textContent = chartData.subtitle;
 
-    if (controlsEl) {
-      controlsEl.innerHTML = `
-        <div class="dashboard-chart-controls">
-          <button class="btn btn-secondary btn-xs" onclick="Dashboard.prevPeriod()">←</button>
-          <button class="btn btn-secondary btn-xs ${this.chartMode === 'week' ? 'active-filter-btn' : ''}" onclick="Dashboard.setChartMode('week')">Week</button>
-          <button class="btn btn-secondary btn-xs ${this.chartMode === 'month' ? 'active-filter-btn' : ''}" onclick="Dashboard.setChartMode('month')">Month</button>
-          <button class="btn btn-secondary btn-xs" onclick="Dashboard.nextPeriod()">→</button>
-        </div>
-      `;
-    }
+    if (!controlsEl) return;
+
+    const isCustom = this.rangePreset === 'custom';
+    const startVal = this.customStart || '';
+    const endVal = this.customEnd || '';
+
+    controlsEl.innerHTML = `
+      <div class="dashboard-chart-controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <select class="form-select" style="width:auto;padding:6px 30px 6px 10px;font-size:0.8rem"
+          onchange="Dashboard.setRangePreset(this.value)">
+          <option value="today" ${this.rangePreset === 'today' ? 'selected' : ''}>Today</option>
+          <option value="yesterday" ${this.rangePreset === 'yesterday' ? 'selected' : ''}>Yesterday</option>
+          <option value="thisWeek" ${this.rangePreset === 'thisWeek' ? 'selected' : ''}>This week</option>
+          <option value="lastWeek" ${this.rangePreset === 'lastWeek' ? 'selected' : ''}>Last week</option>
+          <option value="thisMonth" ${this.rangePreset === 'thisMonth' ? 'selected' : ''}>This month</option>
+          <option value="lastMonth" ${this.rangePreset === 'lastMonth' ? 'selected' : ''}>Last month</option>
+          <option value="custom" ${this.rangePreset === 'custom' ? 'selected' : ''}>Custom</option>
+        </select>
+
+        ${
+          isCustom
+            ? `
+              <input class="form-input" type="date" style="width:auto;padding:6px 10px;font-size:0.8rem"
+                value="${startVal}"
+                onchange="Dashboard.setCustomStart(this.value)">
+              <input class="form-input" type="date" style="width:auto;padding:6px 10px;font-size:0.8rem"
+                value="${endVal}"
+                onchange="Dashboard.setCustomEnd(this.value)">
+              <button class="btn btn-secondary btn-xs" onclick="Dashboard.applyCustomRange()">Apply</button>
+            `
+            : ''
+        }
+      </div>
+    `;
   },
 
   renderCharts() {
@@ -304,6 +479,9 @@ const Dashboard = {
     }, 50);
   },
 
+  // ---------------------------
+  // Recent orders (unchanged)
+  // ---------------------------
   renderRecentOrders() {
     const container = this.byId('recentOrdersList');
     if (!container) return;

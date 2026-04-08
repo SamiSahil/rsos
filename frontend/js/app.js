@@ -2,7 +2,7 @@ const App = {
   validPages: [
     'home',
     'dashboard',
-    'profile',   // ✅ NEW
+    'profile',
     'menu',
     'floor',
     'pos',
@@ -16,7 +16,7 @@ const App = {
 
   protectedPages: [
     'dashboard',
-    'profile',   // ✅ NEW
+    'profile',
     'menu',
     'floor',
     'pos',
@@ -28,18 +28,33 @@ const App = {
     'staff'
   ],
 
+  // Role access rules (admin/manager can access all protected pages by default)
+  // Others are restricted by these lists.
   pageRoles: {
+    // Admin/Manager only
     staff: ['admin', 'manager'],
-    analytics: ['admin', 'manager'],
-    sync: ['admin', 'manager'],
-    inventory: ['admin', 'manager', 'kitchen']
-    // profile: no role restriction (any authenticated staff)
+
+    // Cashier + Admin/Manager
+    dashboard: ['admin', 'manager', 'cashier'],
+    inventory: ['admin', 'manager', 'cashier'],
+    analytics: ['admin', 'manager', 'cashier'],
+    billing: ['admin', 'manager', 'cashier'],
+
+    // Operational pages (Waiter/Kitchen/Cashier/Admin/Manager)
+    profile: ['admin', 'manager', 'cashier', 'waiter', 'kitchen'],
+    menu: ['admin', 'manager', 'cashier', 'waiter', 'kitchen'],
+    floor: ['admin', 'manager', 'cashier', 'waiter', 'kitchen'],
+    pos: ['admin', 'manager', 'cashier', 'waiter', 'kitchen'],
+    kitchen: ['admin', 'manager', 'cashier', 'waiter', 'kitchen'],
+
+    // Sync only: waiter + kitchen + admin/manager (cashier excluded)
+    sync: ['admin', 'manager', 'waiter', 'kitchen']
   },
 
   pageTitles: {
     home: ['RestaurantOS', 'Explore menu & place your order'],
     dashboard: ['Dashboard', 'Overview & Insights'],
-    profile: ['My Profile', 'View your info, salary & payment history'], // ✅ NEW
+    profile: ['My Profile', 'View your info, salary & payment history'],
     menu: ['Menu Engine', 'Manage food items & pricing'],
     floor: ['Floor Map', 'Table management & status'],
     pos: ['Point of Sale', 'Create & manage orders'],
@@ -143,6 +158,17 @@ const App = {
     }
   },
 
+  getDefaultPageForRole(role) {
+    if (!role) return 'home';
+
+    if (role === 'admin' || role === 'manager') return 'dashboard';
+    if (role === 'cashier') return 'dashboard';
+    if (role === 'kitchen') return 'kitchen';
+    if (role === 'waiter') return 'pos';
+
+    return 'home';
+  },
+
   canAccessPage(page) {
     if (!this.protectedPages.includes(page)) {
       return { allowed: true };
@@ -153,8 +179,13 @@ const App = {
     }
 
     const user = Store.get('authUser');
-    const allowedRoles = this.pageRoles[page];
 
+    // Admin/Manager can access all protected pages
+    if (user && (user.role === 'admin' || user.role === 'manager')) {
+      return { allowed: true };
+    }
+
+    const allowedRoles = this.pageRoles[page];
     if (allowedRoles && (!user || !allowedRoles.includes(user.role))) {
       return { allowed: false, reason: 'role' };
     }
@@ -162,7 +193,6 @@ const App = {
     return { allowed: true };
   },
 
-  // ✅ UPDATED: async navigate to allow awaiting async page renderers
   async navigate(page, updateHash = true) {
     if (!this.validPages.includes(page)) page = 'home';
 
@@ -170,12 +200,14 @@ const App = {
 
     if (!access.allowed) {
       if (access.reason === 'auth') {
+        // Don’t let public land on staff screens
         this.toast('Staff login required', 'warning');
         this.openLoginModal();
         page = 'home';
       } else if (access.reason === 'role') {
         this.toast('Access denied', 'error');
-        page = 'dashboard';
+        const role = Store.get('authUser')?.role || null;
+        page = this.getDefaultPageForRole(role);
       }
     }
 
@@ -188,9 +220,14 @@ const App = {
     this.updateNavigation(page);
     this.updateVisiblePage(page);
     this.updatePageMeta(page);
-
+// Prefetch analytics feedback ONCE when navigating to analytics
+if (page === 'analytics') {
+  const user = Store.get('authUser');
+  const canModerate = user && (user.role === 'admin' || user.role === 'manager');
+  await Store.fetchFeedback(!!canModerate);
+}
     try {
-      await this.renderPage(page); // ✅ await
+      await this.renderPage(page);
     } catch (error) {
       console.error(`Render failed for page "${page}":`, error);
       this.toast(`Failed to render ${page}`, 'error');
@@ -225,13 +262,11 @@ const App = {
     if (breadcrumbEl) breadcrumbEl.textContent = subtitle;
   },
 
-  // ✅ UPDATED: async renderPage
   async renderPage(page) {
     const renderers = {
       home: async () => PublicHome.render(),
       dashboard: async () => Dashboard.render(),
 
-      // ✅ NEW: profile renderer
       profile: async () => {
         if (typeof Profile?.load === 'function') {
           await Profile.load();
@@ -246,13 +281,9 @@ const App = {
       kitchen: async () => Kitchen.render(),
       inventory: async () => Inventory.render(),
 
-      // ✅ IMPORTANT: preload feedback for admins including hidden
       analytics: async () => {
-        const user = Store.get('authUser');
-        const canModerate = user && (user.role === 'admin' || user.role === 'manager');
-        await Store.fetchFeedback(!!canModerate);
-        Analytics.render();
-      },
+  Analytics.render(); // render only, no fetching here
+},
 
       billing: async () => Billing.render(),
       sync: async () => SyncCenter.render(),
@@ -279,8 +310,6 @@ const App = {
       analytics: ['orders', 'feedback'],
       sync: ['orders', 'tables', 'menuItems'],
       staff: ['staff'],
-
-      // ✅ NEW: re-render profile when auth user changes (photo/name/etc.)
       profile: ['authUser']
     };
 
@@ -288,14 +317,12 @@ const App = {
     if (!deps.includes(key)) return;
 
     try {
-      // Note: renderPage is async, but rerender can stay fire-and-forget
       this.renderPage(page);
     } catch (error) {
       console.error(`Re-render failed for "${page}" after state change "${key}":`, error);
     }
   },
 
-  // ✅ UPDATED: async route handler
   async handleRouteChange() {
     const page = this.getPageFromHash() || 'home';
     await this.navigate(page, false);
@@ -417,23 +444,59 @@ const App = {
     `;
   },
 
+  // UPDATED: sidebar shows only what the role can access
   updateRoleBasedNav() {
     const user = Store.get('authUser');
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
 
-    document.querySelectorAll('.nav-item[data-roles]').forEach((item) => {
-      const roles = (item.dataset.roles || '')
-        .split(',')
-        .map((role) => role.trim())
-        .filter(Boolean);
+    nav.querySelectorAll('.nav-item[data-page]').forEach((item) => {
+      const page = item.dataset.page;
 
-      if (!roles.length) {
+      if (page === 'home') {
         item.style.display = '';
         return;
       }
 
-      const canShow = !!user && roles.includes(user.role);
-      item.style.display = canShow ? '' : 'none';
+      if (!user) {
+        item.style.display = 'none';
+        return;
+      }
+
+      const access = this.canAccessPage(page);
+      item.style.display = access.allowed ? '' : 'none';
     });
+  
+    // Hide empty section labels
+    const children = Array.from(nav.children);
+    let currentLabel = null;
+    let labelHasVisibleItems = false;
+
+    const flushLabel = () => {
+      if (!currentLabel) return;
+      currentLabel.style.display = labelHasVisibleItems ? '' : 'none';
+    };
+
+    for (const el of children) {
+      if (el.classList.contains('nav-section-label')) {
+        flushLabel();
+        currentLabel = el;
+        labelHasVisibleItems = false;
+
+        if (!user && !el.classList.contains('public-only-nav')) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = '';
+        }
+        continue;
+      }
+
+      if (el.classList.contains('nav-item')) {
+        if (el.style.display !== 'none') labelHasVisibleItems = true;
+      }
+    }
+
+    flushLabel();
   },
 
   openModal(title, bodyHTML, footerHTML = '') {
@@ -498,7 +561,8 @@ const App = {
       const user = await Store.login(email, password);
       this.closeModal();
       this.toast(`Welcome back, ${this.safeText(user.fullName)}`, 'success');
-      await this.navigate('dashboard');
+
+      await this.navigate(this.getDefaultPageForRole(user.role));
     } catch (error) {
       this.toast(error.message || 'Login failed', 'error');
     } finally {

@@ -3,7 +3,7 @@
   "name": "RestaurantOS Management System",
   "short_name": "RestaurantOS",
   "description": "Professional restaurant management, POS, analytics, kitchen and billing system",
-  "start_url": "./index.html#/dashboard",
+  "start_url": "./index.html#/home",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],

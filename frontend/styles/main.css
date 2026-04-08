@@ -1,6 +1,13 @@
 /* ============================================================
    RESET, VARIABLES, BASE
    ============================================================ */
+#app:not(.is-authenticated) .sidebar-nav .nav-section-label:not(.public-only-nav),
+#app:not(.is-authenticated) .sidebar-nav .nav-item:not(.public-only-nav) {
+  display: none !important;
+}#app:not(.is-authenticated) #notificationBtn {
+  display: none !important;
+}
+
 
 :root {
   --accent: #E85D24;
@@ -1191,6 +1198,139 @@ pre {
   color: var(--text-secondary);
 }
 .staff-att-badge strong { color: var(--text-primary); }
+
+/* ---------------- Profile Upgrade ---------------- */
+
+.profile-layout { display:flex; flex-direction:column; gap:16px; }
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+}
+
+@media (max-width: 980px) {
+  .profile-grid { grid-template-columns: 1fr; }
+}
+
+.profile-hero-card { padding: 0; overflow: hidden; }
+.profile-hero {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+  padding:16px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+}
+
+.profile-hero-left { display:flex; gap:12px; align-items:center; }
+.profile-hero-title { display:flex; flex-direction:column; gap:6px; }
+.profile-name { font-weight: 900; font-size: 1.15rem; color: var(--text-primary); }
+.profile-email { font-size: 0.85rem; color: var(--text-muted); }
+.profile-badges { display:flex; gap:8px; flex-wrap:wrap; }
+
+.profile-hero-actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+.profile-card { padding: 16px; }
+.profile-card-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom: 12px;
+}
+
+.profile-month-picker { display:flex; gap:10px; align-items:center; }
+
+.profile-info-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.profile-info-item {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.profile-info-item span { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.profile-info-item strong { font-size: 0.92rem; color: var(--text-primary); font-weight: 800; }
+
+.profile-stats-grid {
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .profile-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.profile-stat {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.profile-stat span { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+.profile-stat strong { font-size: 1.05rem; color: #fff; font-weight: 900; }
+
+.profile-money-grid {
+  margin-top: 12px;
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .profile-money-grid { grid-template-columns: 1fr; }
+}
+
+.profile-money {
+  border-radius: var(--radius);
+  padding: 12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  background: var(--bg-input);
+}
+.profile-money span { font-size: 0.78rem; color: var(--text-muted); font-weight: 700; }
+.profile-money strong { font-size: 1.1rem; font-weight: 900; }
+
+.profile-money-info { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18); }
+.profile-money-success { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.18); }
+.profile-money-danger { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.18); }
+
+.profile-payments-list {
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-height: 420px;
+  overflow:auto;
+  padding-right: 6px;
+}
+
+.profile-payment-row {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 12px;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+}
+
+.profile-payment-left { display:flex; flex-direction:column; gap:6px; }
+.profile-payment-receipt { font-weight: 900; color: var(--text-primary); }
+.profile-payment-time, .profile-payment-note { color: var(--text-muted); font-size: 0.78rem; }
+
+.profile-payment-right { text-align:right; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+.profile-payment-amount { font-weight: 900; color: var(--accent); }
 
 
 .calendar-grid {

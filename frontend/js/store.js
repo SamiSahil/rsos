@@ -28,11 +28,15 @@ const Store = {
   socket: null,
 
   async init() {
+    // Public-safe initial load (no orders/staff)
     await this.refreshAll();
 
+    // Restore staff session if token exists
     if (this._state.authToken && navigator.onLine) {
       try {
         await this.fetchMe();
+        // After auth restored, load staff-only data
+        await this.fetchOrders();
       } catch (error) {
         console.warn('Failed to restore session, logging out:', error);
         this.logout();
@@ -43,14 +47,20 @@ const Store = {
   async refreshAll() {
     if (!navigator.onLine) return;
 
-    await Promise.all([
+    const tasks = [
       this.fetchMenuItems(),
       this.fetchTables(),
-      this.fetchOrders(),
-      // public fetch of feedback (hidden excluded by backend unless includeHidden is used)
+      // public fetch of feedback (hidden excluded unless includeHidden is used)
       this.fetchFeedback(false),
       this.fetchSettings()
-    ]);
+    ];
+
+    // Staff-only: load orders only when authenticated
+    if (this.isAuthenticated()) {
+      tasks.push(this.fetchOrders());
+    }
+
+    await Promise.all(tasks);
   },
 
   get(key) {
@@ -146,6 +156,7 @@ const Store = {
       this.socket = null;
     }
 
+    // Reconnect socket as public
     this.connectSocket();
   },
 
@@ -177,6 +188,8 @@ const Store = {
       this.setSocketConnected(false);
     });
 
+    // Staff-only events should not be emitted to public by backend anymore.
+    // Keeping listeners is fine; public won't receive them.
     this.socket.on('order:new', (order) => {
       console.log('📥 order:new', order);
       this.upsertOrder(order);
@@ -248,7 +261,7 @@ const Store = {
       deliveryAddress: order.deliveryAddress || '',
       paymentMethod: order.paymentMethod || 'cash',
       items: (order.items || []).map((it) => ({
-        menuId: it.menuItem || null,
+        menuId: it.menuItem || it.menuId || null,
         name: it.name,
         qty: it.qty,
         price: it.price
@@ -298,7 +311,7 @@ const Store = {
       name: feedback.name,
       rating: feedback.rating,
       text: feedback.text,
-      isHidden: !!feedback.isHidden, // NEW
+      isHidden: !!feedback.isHidden,
       timestamp: new Date(feedback.createdAt).getTime(),
       offlineQueued: false
     };
@@ -501,8 +514,11 @@ const Store = {
           ...(options.headers || {})
         };
 
-        const response = await fetch(url, { ...options, headers });
-
+const response = await fetch(url, {
+  ...options,
+  headers,
+  cache: 'no-store'
+});
         const json = await response.json().catch(() => ({}));
 
         if (!response.ok || json.success === false) {
@@ -530,16 +546,26 @@ const Store = {
       body: JSON.stringify({ email, password })
     });
 
+    // Set token
     this.setToken(json.data.token);
+
+    // Set minimal user quickly (contains role)
     this.setAuthUser(json.data);
 
+    // Reconnect socket to join correct role room
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
     this.connectSocket();
 
-    return json.data;
+    // IMPORTANT: load full staff record for profile (photoUrl, salary, workingDays, etc.)
+    await this.fetchMe();
+
+    // Load staff-only data now
+    await this.fetchOrders();
+
+    return this.get('authUser');
   },
 
   async fetchMe() {
@@ -577,7 +603,6 @@ const Store = {
     this.set('orders', [...localQueuedOrders, ...backendOrders]);
   },
 
-  // UPDATED: includeHidden option for admin analytics moderation
   async fetchFeedback(includeHidden = false) {
     const q = includeHidden ? '?includeHidden=true' : '';
     const json = await this.request(`/feedback${q}`);
