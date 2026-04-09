@@ -29,8 +29,17 @@ const Analytics = {
     return Store.get('orders') || [];
   },
 
-  getCompletedOrders() {
-    return this.getOrders().filter((order) => order.status === 'completed');
+  /**
+   * ✅ Accounting-style revenue:
+   * Count an order as "revenue" only when billing is completed.
+   * Time bucket uses billingCompletedAt (ms) which must be saved in backend.
+   */
+  getBilledOrders() {
+    return this.getOrders().filter((order) => {
+      const billed = (order.billingStatus || 'pending') === 'completed';
+      const hasBillTime = !!order.billingCompletedAt;
+      return billed && hasBillTime;
+    });
   },
 
   getFeedback() {
@@ -38,15 +47,26 @@ const Analytics = {
   },
 
   // ---------------------------
-  // Stats
+  // Local date key helper (prevents UTC day-shift bugs)
+  // ---------------------------
+  getLocalDateKey(timestampMs) {
+    const d = new Date(timestampMs);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  },
+
+  // ---------------------------
+  // Stats (Accounting)
   // ---------------------------
   getSummaryData() {
-    const completedOrders = this.getCompletedOrders();
-    const feedback = this.getFeedback().filter((f) => !f.isHidden); // public rating based on visible only
+    const billedOrders = this.getBilledOrders();
+    const feedback = this.getFeedback().filter((f) => !f.isHidden);
 
-    const totalRevenue = completedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-    const totalOrders = completedOrders.length;
-    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    const totalRevenue = billedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalInvoices = billedOrders.length;
+    const avgInvoiceValue = totalInvoices > 0 ? totalRevenue / totalInvoices : 0;
 
     const avgRating =
       feedback.length > 0
@@ -55,14 +75,14 @@ const Analytics = {
           ).toFixed(1)
         : '0.0';
 
-    return { totalRevenue, totalOrders, avgOrderValue, avgRating };
+    return { totalRevenue, totalInvoices, avgInvoiceValue, avgRating };
   },
 
   renderStats() {
     const container = this.byId('analyticsStats');
     if (!container) return;
 
-    const { totalRevenue, totalOrders, avgOrderValue, avgRating } = this.getSummaryData();
+    const { totalRevenue, totalInvoices, avgInvoiceValue, avgRating } = this.getSummaryData();
 
     container.innerHTML = `
       <div class="stat-card analytics-clickable-card" onclick="Analytics.openRevenueBreakdown()">
@@ -72,19 +92,20 @@ const Analytics = {
           </svg>
         </div>
         <div class="stat-value">${App.currency(totalRevenue)}</div>
-        <div class="stat-label">Total Revenue</div>
+        <div class="stat-label">Total Revenue (Billed)</div>
       </div>
 
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--success-bg);color:var(--success)">
           <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="9" cy="21" r="1"></circle>
-            <circle cx="20" cy="21" r="1"></circle>
-            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"></path>
+            <path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"></path>
+            <path d="M9 9h6"></path>
+            <path d="M9 13h6"></path>
+            <path d="M9 17h6"></path>
           </svg>
         </div>
-        <div class="stat-value">${totalOrders}</div>
-        <div class="stat-label">Completed Orders</div>
+        <div class="stat-value">${totalInvoices}</div>
+        <div class="stat-label">Invoices (Billed)</div>
       </div>
 
       <div class="stat-card">
@@ -93,8 +114,8 @@ const Analytics = {
             <path d="M18 20V10M12 20V4M6 20v-6"></path>
           </svg>
         </div>
-        <div class="stat-value">${App.currency(avgOrderValue)}</div>
-        <div class="stat-label">Avg Order Value</div>
+        <div class="stat-value">${App.currency(avgInvoiceValue)}</div>
+        <div class="stat-label">Avg Invoice Value</div>
       </div>
 
       <div class="stat-card">
@@ -158,8 +179,11 @@ const Analytics = {
     return { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) };
   },
 
+  /**
+   * ✅ All sales chart data is based on billingCompletedAt.
+   */
   getSalesChartData() {
-    const completedOrders = this.getCompletedOrders();
+    const billedOrders = this.getBilledOrders();
 
     if (this.chartMode === 'month') {
       const { start, end } = this.getMonthRange(this.chartOffset);
@@ -173,8 +197,8 @@ const Analytics = {
 
         labels.push(cursor.getDate().toString());
 
-        const revenue = completedOrders
-          .filter((o) => o.timestamp >= cursor.getTime() && o.timestamp < next.getTime())
+        const revenue = billedOrders
+          .filter((o) => o.billingCompletedAt >= cursor.getTime() && o.billingCompletedAt < next.getTime())
           .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
@@ -185,7 +209,7 @@ const Analytics = {
         labels,
         data,
         title: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-        subtitle: 'Daily sales for selected month'
+        subtitle: 'Daily billed revenue for selected month'
       };
     }
 
@@ -200,8 +224,8 @@ const Analytics = {
 
         labels.push(monthStart.toLocaleDateString('en-US', { month: 'short' }));
 
-        const revenue = completedOrders
-          .filter((o) => o.timestamp >= monthStart.getTime() && o.timestamp < monthEnd.getTime())
+        const revenue = billedOrders
+          .filter((o) => o.billingCompletedAt >= monthStart.getTime() && o.billingCompletedAt < monthEnd.getTime())
           .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
@@ -211,10 +235,11 @@ const Analytics = {
         labels,
         data,
         title: String(start.getFullYear()),
-        subtitle: 'Monthly sales for selected year'
+        subtitle: 'Monthly billed revenue for selected year'
       };
     }
 
+    // week
     const { start } = this.getWeekRange(this.chartOffset);
     const labels = [];
     const data = [];
@@ -228,8 +253,8 @@ const Analytics = {
 
       labels.push(dayStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
 
-      const revenue = completedOrders
-        .filter((o) => o.timestamp >= dayStart.getTime() && o.timestamp < dayEnd.getTime())
+      const revenue = billedOrders
+        .filter((o) => o.billingCompletedAt >= dayStart.getTime() && o.billingCompletedAt < dayEnd.getTime())
         .reduce((sum, o) => sum + (o.total || 0), 0);
 
       data.push(revenue);
@@ -239,7 +264,7 @@ const Analytics = {
       labels,
       data,
       title: this.chartOffset === 0 ? 'This Week' : `Week ${this.chartOffset < 0 ? 'Past' : 'Future'}`,
-      subtitle: 'Daily sales for selected week'
+      subtitle: 'Daily billed revenue for selected week'
     };
   },
 
@@ -278,15 +303,15 @@ const Analytics = {
   },
 
   // ---------------------------
-  // Revenue breakdown (unchanged)
+  // Revenue breakdown (Accounting)
   // ---------------------------
   getRevenueByDate() {
-    const completedOrders = this.getCompletedOrders();
+    const billedOrders = this.getBilledOrders();
     const revenueMap = {};
 
-    completedOrders.forEach((o) => {
-      const date = new Date(o.timestamp).toISOString().slice(0, 10);
-      revenueMap[date] = (revenueMap[date] || 0) + (o.total || 0);
+    billedOrders.forEach((o) => {
+      const key = this.getLocalDateKey(o.billingCompletedAt);
+      revenueMap[key] = (revenueMap[key] || 0) + (o.total || 0);
     });
 
     return Object.entries(revenueMap).sort((a, b) => new Date(b[0]) - new Date(a[0]));
@@ -306,7 +331,7 @@ const Analytics = {
         `
           )
           .join('')
-      : `<div class="empty-state"><p>No revenue data yet</p></div>`;
+      : `<div class="empty-state"><p>No billed revenue data yet</p></div>`;
 
     const body = `
       <div class="form-group">
@@ -325,7 +350,7 @@ const Analytics = {
       <div id="analyticsRevenueDayResult" style="margin-top:16px"></div>
     `;
 
-    App.openModal('Revenue Breakdown', body, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
+    App.openModal('Revenue Breakdown (Billed)', body, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
   },
 
   showRevenueForDate(date) {
@@ -335,14 +360,14 @@ const Analytics = {
     if (!result) return;
 
     if (!found) {
-      result.innerHTML = `<div class="panel-danger">No revenue found for ${date}</div>`;
+      result.innerHTML = `<div class="panel-danger">No billed revenue found for ${date}</div>`;
       return;
     }
 
     result.innerHTML = `
       <div class="panel-muted">
         <strong>${date}</strong><br>
-        Revenue: <strong>${App.currency(found[1])}</strong>
+        Billed Revenue: <strong>${App.currency(found[1])}</strong>
       </div>
     `;
   },
@@ -357,13 +382,13 @@ const Analytics = {
   },
 
   // ---------------------------
-  // Top selling items (unchanged)
+  // Top selling items (Accounting consistent)
   // ---------------------------
   getTopSellingItems() {
-    const completedOrders = this.getCompletedOrders();
+    const billedOrders = this.getBilledOrders();
     const salesMap = {};
 
-    completedOrders.forEach((order) => {
+    billedOrders.forEach((order) => {
       (order.items || []).forEach((item) => {
         salesMap[item.name] = (salesMap[item.name] || 0) + (item.qty || 0);
       });
@@ -382,7 +407,7 @@ const Analytics = {
     const maxSales = topItems.length > 0 ? topItems[0][1] : 1;
 
     if (!topItems.length) {
-      container.innerHTML = `<div class="empty-state"><p>No sales data yet</p></div>`;
+      container.innerHTML = `<div class="empty-state"><p>No billed sales data yet</p></div>`;
       return;
     }
 
@@ -405,10 +430,9 @@ const Analytics = {
   },
 
   // ============================================================
-  // FEEDBACK (UPDATED WITH MODERATION)
+  // FEEDBACK (same as your current system)
   // ============================================================
   async ensureFeedbackLoadedForAdmin() {
-    // Admin/manager should see hidden feedback too
     if (this.canModerateFeedback()) {
       await Store.fetchFeedback(true);
     } else {
@@ -580,7 +604,6 @@ const Analytics = {
         body: JSON.stringify(payload)
       });
 
-      // refresh feedback list after adding
       await this.ensureFeedbackLoadedForAdmin();
       App.closeModal();
       this.renderFeedback();

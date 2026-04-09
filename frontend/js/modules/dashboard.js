@@ -1,9 +1,5 @@
 const Dashboard = {
-  // Presets:
-  // today | yesterday | thisWeek | lastWeek | thisMonth | lastMonth | custom
   rangePreset: 'thisWeek',
-
-  // for custom range
   customStart: '',
   customEnd: '',
 
@@ -17,9 +13,6 @@ const Dashboard = {
     return document.getElementById(id);
   },
 
-  // ---------------------------
-  // Data sources
-  // ---------------------------
   getOrders() {
     return Store.get('orders') || [];
   },
@@ -33,118 +26,14 @@ const Dashboard = {
   },
 
   // ---------------------------
-  // Basic stats (unchanged: "Today")
+  // Accounting helpers
   // ---------------------------
-  getTodayRange() {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-
-    return {
-      start: start.getTime(),
-      end: end.getTime()
-    };
-  },
-
-  getTodayCompletedOrders() {
-    const { start, end } = this.getTodayRange();
-
+  getBilledOrders() {
     return this.getOrders().filter(
-      (order) =>
-        order.status === 'completed' &&
-        order.timestamp >= start &&
-        order.timestamp < end
+      (o) => (o.billingStatus || 'pending') === 'completed' && !!o.billingCompletedAt
     );
   },
 
-  getStatsData() {
-    const todayCompleted = this.getTodayCompletedOrders();
-    const tables = this.getTables();
-
-    const todayRevenue = todayCompleted.reduce(
-      (sum, order) => sum + (order.total || 0),
-      0
-    );
-
-    const avgOrderValue = todayCompleted.length
-      ? todayRevenue / todayCompleted.length
-      : 0;
-
-    const activeTables = tables.filter(
-      (table) => table.status === 'occupied' || table.status === 'reserved'
-    ).length;
-
-    return {
-      todayRevenue,
-      todayCompletedOrders: todayCompleted.length,
-      avgOrderValue,
-      activeTables,
-      totalTables: tables.length
-    };
-  },
-
-  renderStats() {
-    const stats = this.getStatsData();
-    const container = this.byId('dashboardStats');
-    if (!container) return;
-
-    container.innerHTML = `
-      <div class="stat-card">
-        <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"></path>
-          </svg>
-        </div>
-        <div class="stat-value">${App.currency(stats.todayRevenue)}</div>
-        <div class="stat-label">Today's Revenue</div>
-        <span class="stat-change up">Completed today</span>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon" style="background:var(--success-bg);color:var(--success)">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="9" cy="21" r="1"></circle>
-            <circle cx="20" cy="21" r="1"></circle>
-            <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"></path>
-          </svg>
-        </div>
-        <div class="stat-value">${stats.todayCompletedOrders}</div>
-        <div class="stat-label">Today's Completed Orders</div>
-        <span class="stat-change up">Completed today</span>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon" style="background:var(--info-bg);color:var(--info)">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path d="M18 20V10M12 20V4M6 20v-6"></path>
-          </svg>
-        </div>
-        <div class="stat-value">${App.currency(stats.avgOrderValue)}</div>
-        <div class="stat-label">Today's Avg Order Value</div>
-        <span class="stat-change up">Completed today</span>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon" style="background:var(--purple-bg);color:var(--purple)">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-            <path d="M3 9h18M9 3v18"></path>
-          </svg>
-        </div>
-        <div class="stat-value">${stats.activeTables}</div>
-        <div class="stat-label">Active/Reserved Tables</div>
-        <span class="stat-change up">${stats.totalTables} total</span>
-      </div>
-    `;
-  },
-
-  // ============================================================
-  // NEW: Date Range Picker logic
-  // ============================================================
-
-  // Helpers
   startOfDay(date = new Date()) {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
@@ -164,7 +53,6 @@ const Dashboard = {
   },
 
   formatRangeTitle(start, endExclusive) {
-    // endExclusive is next-day boundary; show inclusive end date
     const endInclusive = new Date(endExclusive.getTime() - 1);
     const s = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const e = endInclusive.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -176,7 +64,7 @@ const Dashboard = {
 
   getWeekRange(offsetWeeks = 0) {
     const now = new Date();
-    const day = now.getDay(); // 0=Sun
+    const day = now.getDay();
     const mondayOffset = day === 0 ? -6 : 1 - day;
 
     const start = new Date(now);
@@ -202,15 +90,16 @@ const Dashboard = {
     return labels.map((l, i) => (i % step === 0 ? l : ''));
   },
 
-  // Preset setter
+  // ---------------------------
+  // Date range picker
+  // ---------------------------
   setRangePreset(preset) {
     this.rangePreset = preset || 'thisWeek';
 
-    // When switching to custom, initialize default if empty
     if (this.rangePreset === 'custom') {
       if (!this.customStart || !this.customEnd) {
         const end = this.startOfDay(new Date());
-        const start = this.addDays(end, -6); // last 7 days
+        const start = this.addDays(end, -6);
         this.customStart = this.toISODateInputValue(start);
         this.customEnd = this.toISODateInputValue(end);
       }
@@ -255,44 +144,42 @@ const Dashboard = {
     if (this.rangePreset === 'today') {
       const start = nowStart;
       const end = this.addDays(start, 1);
-      return { start, end, granularity: 'hour', title: 'Today', subtitle: 'Hourly revenue for today' };
+      return { start, end, granularity: 'hour', title: 'Today', subtitle: 'Hourly billed revenue for today' };
     }
 
     if (this.rangePreset === 'yesterday') {
       const end = nowStart;
       const start = this.addDays(end, -1);
-      return { start, end, granularity: 'hour', title: 'Yesterday', subtitle: 'Hourly revenue for yesterday' };
+      return { start, end, granularity: 'hour', title: 'Yesterday', subtitle: 'Hourly billed revenue for yesterday' };
     }
 
     if (this.rangePreset === 'thisWeek') {
       const { start, end } = this.getWeekRange(0);
-      return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily revenue for this week' };
+      return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily billed revenue for this week' };
     }
 
     if (this.rangePreset === 'lastWeek') {
       const { start, end } = this.getWeekRange(-1);
-      return { start, end, granularity: 'day', title: 'Last Week', subtitle: 'Daily revenue for last week' };
+      return { start, end, granularity: 'day', title: 'Last Week', subtitle: 'Daily billed revenue for last week' };
     }
 
     if (this.rangePreset === 'thisMonth') {
       const { start, end } = this.getMonthRange(0);
       const label = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      return { start, end, granularity: 'day', title: label, subtitle: 'Daily revenue for this month' };
+      return { start, end, granularity: 'day', title: label, subtitle: 'Daily billed revenue for this month' };
     }
 
     if (this.rangePreset === 'lastMonth') {
       const { start, end } = this.getMonthRange(-1);
       const label = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      return { start, end, granularity: 'day', title: label, subtitle: 'Daily revenue for last month' };
+      return { start, end, granularity: 'day', title: label, subtitle: 'Daily billed revenue for last month' };
     }
 
-    // custom
     if (this.rangePreset === 'custom') {
       const start = this.customStart ? this.startOfDay(new Date(this.customStart)) : this.startOfDay(new Date());
       const endInclusive = this.customEnd ? this.startOfDay(new Date(this.customEnd)) : this.startOfDay(new Date());
-      const end = this.addDays(endInclusive, 1); // make end exclusive
+      const end = this.addDays(endInclusive, 1);
 
-      // If same day -> hourly, else daily
       const isSameDay = start.getTime() === endInclusive.getTime();
       const granularity = isSameDay ? 'hour' : 'day';
 
@@ -301,23 +188,117 @@ const Dashboard = {
         end,
         granularity,
         title: this.formatRangeTitle(start, end),
-        subtitle: granularity === 'hour' ? 'Hourly revenue for selected day' : 'Daily revenue for selected range'
+        subtitle: granularity === 'hour' ? 'Hourly billed revenue for selected day' : 'Daily billed revenue for selected range'
       };
     }
 
-    // fallback
     const { start, end } = this.getWeekRange(0);
-    return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily revenue for this week' };
+    return { start, end, granularity: 'day', title: 'This Week', subtitle: 'Daily billed revenue for this week' };
   },
 
-  getRevenueChartData() {
-    const completedOrders = this.getOrders().filter((order) => order.status === 'completed');
-    const range = this.getSelectedRange();
+  // ---------------------------
+  // Dashboard Stats (Accounting style)
+  // ---------------------------
+  getTodayBilledRange() {
+    const start = this.startOfDay(new Date());
+    const end = this.addDays(start, 1);
+    return { start: start.getTime(), end: end.getTime() };
+  },
 
+  getTodayBilledOrders() {
+    const { start, end } = this.getTodayBilledRange();
+    return this.getBilledOrders().filter((o) => o.billingCompletedAt >= start && o.billingCompletedAt < end);
+  },
+
+  getStatsData() {
+    const billedToday = this.getTodayBilledOrders();
+    const billedRevenueToday = billedToday.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    const avgInvoiceValue = billedToday.length ? billedRevenueToday / billedToday.length : 0;
+
+    const pendingBills = this.getOrders().filter(
+      (o) => (o.status === 'completed') && ((o.billingStatus || 'pending') !== 'completed')
+    ).length;
+
+    const tables = this.getTables();
+    const activeTables = tables.filter((t) => t.status === 'occupied' || t.status === 'reserved').length;
+
+    return {
+      billedRevenueToday,
+      invoicesToday: billedToday.length,
+      avgInvoiceValue,
+      pendingBills,
+      activeTables,
+      totalTables: tables.length
+    };
+  },
+
+  renderStats() {
+    const stats = this.getStatsData();
+    const container = this.byId('dashboardStats');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--accent-bg);color:var(--accent)">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"></path>
+          </svg>
+        </div>
+        <div class="stat-value">${App.currency(stats.billedRevenueToday)}</div>
+        <div class="stat-label">Today's Billed Revenue</div>
+        <span class="stat-change up">Accounting basis</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--success-bg);color:var(--success)">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M9 12h6"></path>
+            <path d="M9 16h6"></path>
+            <path d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"></path>
+          </svg>
+        </div>
+        <div class="stat-value">${stats.invoicesToday}</div>
+        <div class="stat-label">Invoices Billed Today</div>
+        <span class="stat-change up">Billing completed</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--info-bg);color:var(--info)">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M18 20V10M12 20V4M6 20v-6"></path>
+          </svg>
+        </div>
+        <div class="stat-value">${App.currency(stats.avgInvoiceValue)}</div>
+        <div class="stat-label">Avg Invoice Value (Today)</div>
+        <span class="stat-change up">Billed orders</span>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 9v4"></path>
+            <path d="M12 17h.01"></path>
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+          </svg>
+        </div>
+        <div class="stat-value">${stats.pendingBills}</div>
+        <div class="stat-label">Pending Bills</div>
+        <span class="stat-change down">Needs billing</span>
+      </div>
+    `;
+  },
+
+  // ---------------------------
+  // Revenue Chart (Accounting style)
+  // ---------------------------
+  getRevenueChartData() {
+    const billedOrders = this.getBilledOrders();
+    const range = this.getSelectedRange();
     const startMs = range.start.getTime();
     const endMs = range.end.getTime();
 
-    const inRange = completedOrders.filter((o) => o.timestamp >= startMs && o.timestamp < endMs);
+    const inRange = billedOrders.filter((o) => o.billingCompletedAt >= startMs && o.billingCompletedAt < endMs);
 
     if (range.granularity === 'hour') {
       const labels = [];
@@ -330,29 +311,20 @@ const Dashboard = {
         const bucketEnd = new Date(bucketStart);
         bucketEnd.setHours(h + 1, 0, 0, 0);
 
-        labels.push(
-          bucketStart.toLocaleTimeString('en-US', { hour: '2-digit' })
-        );
+        labels.push(bucketStart.toLocaleTimeString('en-US', { hour: '2-digit' }));
 
         const revenue = inRange
-          .filter((o) => o.timestamp >= bucketStart.getTime() && o.timestamp < bucketEnd.getTime())
+          .filter((o) => o.billingCompletedAt >= bucketStart.getTime() && o.billingCompletedAt < bucketEnd.getTime())
           .reduce((sum, o) => sum + (o.total || 0), 0);
 
         data.push(revenue);
       }
 
-      // keep labels compact
-      const compactLabels = labels.map((l, i) => (i % 3 === 0 ? l : '')); // show every 3 hours
+      const compactLabels = labels.map((l, i) => (i % 3 === 0 ? l : ''));
 
-      return {
-        labels: compactLabels,
-        data,
-        title: range.title,
-        subtitle: range.subtitle
-      };
+      return { labels: compactLabels, data, title: range.title, subtitle: range.subtitle };
     }
 
-    // daily buckets
     const labels = [];
     const data = [];
 
@@ -361,15 +333,10 @@ const Dashboard = {
       const next = new Date(cursor);
       next.setDate(cursor.getDate() + 1);
 
-      // label style depends on preset length
       let label = cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-      // For "thisWeek/lastWeek", show weekday
       if (this.rangePreset === 'thisWeek' || this.rangePreset === 'lastWeek') {
         label = cursor.toLocaleDateString('en-US', { weekday: 'short' });
       }
-
-      // For month presets, show day-of-month
       if (this.rangePreset === 'thisMonth' || this.rangePreset === 'lastMonth') {
         label = String(cursor.getDate());
       }
@@ -377,7 +344,7 @@ const Dashboard = {
       labels.push(label);
 
       const revenue = inRange
-        .filter((o) => o.timestamp >= cursor.getTime() && o.timestamp < next.getTime())
+        .filter((o) => o.billingCompletedAt >= cursor.getTime() && o.billingCompletedAt < next.getTime())
         .reduce((sum, o) => sum + (o.total || 0), 0);
 
       data.push(revenue);
@@ -385,23 +352,18 @@ const Dashboard = {
     }
 
     const compactLabels = this.compressLabels(labels, 14);
-
-    return {
-      labels: compactLabels,
-      data,
-      title: range.title,
-      subtitle: range.subtitle
-    };
+    return { labels: compactLabels, data, title: range.title, subtitle: range.subtitle };
   },
 
+  // Category chart should align with accounting too
   getCategoryChartData() {
-    const orders = this.getOrders();
+    const billedOrders = this.getBilledOrders();
     const menu = this.getMenuItems();
     const categories = {};
 
-    orders.forEach((order) => {
+    billedOrders.forEach((order) => {
       (order.items || []).forEach((item) => {
-        const menuItem = menu.find((entry) => entry.id === item.menuId);
+        const menuItem = menu.find((m) => m.id === item.menuId);
         const category = menuItem ? menuItem.category : 'Other';
         categories[category] = (categories[category] || 0) + (item.qty || 0);
       });
@@ -445,11 +407,9 @@ const Dashboard = {
           isCustom
             ? `
               <input class="form-input" type="date" style="width:auto;padding:6px 10px;font-size:0.8rem"
-                value="${startVal}"
-                onchange="Dashboard.setCustomStart(this.value)">
+                value="${startVal}" onchange="Dashboard.setCustomStart(this.value)">
               <input class="form-input" type="date" style="width:auto;padding:6px 10px;font-size:0.8rem"
-                value="${endVal}"
-                onchange="Dashboard.setCustomEnd(this.value)">
+                value="${endVal}" onchange="Dashboard.setCustomEnd(this.value)">
               <button class="btn btn-secondary btn-xs" onclick="Dashboard.applyCustomRange()">Apply</button>
             `
             : ''
@@ -479,23 +439,15 @@ const Dashboard = {
     }, 50);
   },
 
-  // ---------------------------
-  // Recent orders (unchanged)
-  // ---------------------------
+  // recent orders can remain operational; no change required
   renderRecentOrders() {
     const container = this.byId('recentOrdersList');
     if (!container) return;
 
-    const orders = [...this.getOrders()]
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 4);
+    const orders = [...this.getOrders()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 4);
 
     const statusBadge = (status) => {
-      const map = {
-        pending: 'badge-warning',
-        'in-progress': 'badge-info',
-        completed: 'badge-success'
-      };
+      const map = { pending: 'badge-warning', 'in-progress': 'badge-info', completed: 'badge-success' };
       return `<span class="badge ${map[status] || 'badge-info'}">${status.replace('-', ' ')}</span>`;
     };
 
@@ -517,32 +469,12 @@ const Dashboard = {
             ${typeBadge(order.orderType || 'dine-in')}
             ${statusBadge(order.status)}
           </div>
-
-          <div style="font-weight:900; color:var(--accent); font-size:1.1rem; text-shadow:0 2px 10px rgba(232,93,36,0.3);">
+          <div style="font-weight:900; color:var(--accent); font-size:1.1rem;">
             ${App.currency(order.total)}
           </div>
         </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px;">
-          <div style="flex:1;">
-            <div style="font-size:0.85rem; color:var(--text-primary); font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-              ${
-                order.orderType === 'delivery'
-                  ? `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M5 12l4-4m-4 4l4 4"/></svg> ${App.safeText(order.customerName || 'Guest')} (${App.safeText(order.customerPhone || 'No phone')})`
-                  : `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.242-4.243a8 8 0 1111.314 0z"/><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Table ${App.safeText(order.table || '-')} · ${App.safeText(order.customerName || 'Walk-in')}`
-              }
-            </div>
-
-            <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
-              ${(order.items || []).map((item) => `${item.qty}x ${App.safeText(item.name)}`).join(', ')}
-            </div>
-          </div>
-
-          <div style="text-align:right;">
-            <div style="font-size:0.7rem; color:var(--text-muted); font-weight:500;">
-              ${App.timeAgo(order.timestamp)}
-            </div>
-          </div>
+        <div style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
+          ${(order.items || []).map((item) => `${item.qty}x ${App.safeText(item.name)}`).join(', ')}
         </div>
       </div>
     `).join('');
@@ -551,73 +483,6 @@ const Dashboard = {
   openOrderDetails(orderId) {
     const order = this.getOrders().find((entry) => String(entry.id) === String(orderId));
     if (!order) return;
-
-    const typeLabel = order.orderType === 'delivery' ? 'Home Delivery' : 'Dine-in';
-    const discountPercent = Number(order.discountPercent || 0);
-    const discountAmount = Number(order.discount || 0);
-
-    const customerSection = order.orderType === 'delivery'
-      ? `
-        <div class="summary-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Guest')}</span></div>
-        <div class="summary-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-        <div class="summary-row"><span>Address</span><span style="max-width:220px;text-align:right">${App.safeText(order.deliveryAddress || '-')}</span></div>
-      `
-      : `
-        <div class="summary-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Walk-in')}</span></div>
-        <div class="summary-row"><span>Table</span><span>${App.safeText(order.table || '-')}</span></div>
-        <div class="summary-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-      `;
-
-    const body = `
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:1.05rem;font-weight:800">Order #${App.safeText(order.id)}</div>
-            <div style="font-size:0.8rem;color:var(--text-muted)">
-              ${App.formatDateTime(order.timestamp)}
-            </div>
-          </div>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="badge ${order.orderType === 'delivery' ? 'badge-purple' : 'badge-accent'}">${typeLabel}</span>
-            <span class="badge ${order.status === 'pending' ? 'badge-warning' : order.status === 'in-progress' ? 'badge-info' : 'badge-success'}">${order.status.replace('-', ' ')}</span>
-          </div>
-        </div>
-
-        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
-          ${customerSection}
-          <div class="summary-row"><span>Payment</span><span>${App.safeText(order.paymentMethod || 'cash')}</span></div>
-        </div>
-
-        <div>
-          <div style="font-size:0.9rem;font-weight:700;margin-bottom:10px">Items</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${(order.items || []).map((item) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-input);border-radius:var(--radius)">
-                <div>
-                  <div style="font-weight:600">${App.safeText(item.name)}</div>
-                  <div style="font-size:0.75rem;color:var(--text-muted)">Qty: ${item.qty}</div>
-                </div>
-                <div style="font-weight:700">${App.currency((item.price || 0) * (item.qty || 0))}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
-          <div class="summary-row"><span>Subtotal</span><span>${App.currency(order.subtotal)}</span></div>
-          <div class="summary-row"><span>Tax</span><span>${App.currency(order.tax)}</span></div>
-          <div class="summary-row"><span>Discount (${discountPercent}%)</span><span>-${App.currency(discountAmount)}</span></div>
-          <div class="summary-row total"><span>Total</span><span>${App.currency(order.total)}</span></div>
-        </div>
-      </div>
-    `;
-
-    const footer = `
-      <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
-      <button class="btn btn-primary" onclick="Billing.generateReceipt(${JSON.stringify(order.id)})">Open Receipt</button>
-    `;
-
-    App.openModal('Order Details', body, footer);
+    Billing.generateReceipt(order.id);
   }
 };

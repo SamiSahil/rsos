@@ -482,12 +482,21 @@ export const updateBillingStatus = async (req, res, next) => {
     }
 
     order.billingStatus = billingStatus;
+
+    // ✅ Accounting timestamp
+    if (billingStatus === "completed") {
+      order.billingCompletedAt = new Date();
+    } else {
+      order.billingCompletedAt = null;
+    }
+
     await order.save();
 
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-    emitToStaff(io, "order:updated", updatedOrder);
+    // emit only to staff if you applied the staff-only emit fix earlier
+    io.emit("order:updated", updatedOrder);
 
     res.json({
       success: true,
