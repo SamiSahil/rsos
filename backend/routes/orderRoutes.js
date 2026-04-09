@@ -5,10 +5,13 @@ import {
   createOrder,
   updateOrderStatus,
   deleteOrder,
-  updateBillingStatus
+  updateBillingStatus,
+  trackOrderPublic
 } from "../controllers/orderController.js";
 
 const router = express.Router();
+
+router.get("/track/:trackingCode", trackOrderPublic);
 
 router.route("/")
   .get(getOrders)

@@ -31,6 +31,13 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       unique: true
     },
+    trackingHash: {
+      type: String,
+      default: null,
+      unique: true,
+      sparse: true,
+      index: true
+    },
     table: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Table",

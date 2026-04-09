@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Order from "../models/Order.js";
 import Table from "../models/Table.js";
 import MenuItem from "../models/MenuItem.js";
@@ -10,15 +11,88 @@ const emitToStaff = (io, event, payload) => {
 };
 
 const emitStockToEveryone = (io, stockUpdates) => {
-  // Staff rooms
   STAFF_ROLES.forEach((role) => io.to(`role:${role}`).emit("stock:updated", stockUpdates));
-  // Public room (menu stock visibility is okay for customers)
   io.to("public").emit("stock:updated", stockUpdates);
 };
 
 const generateNextOrderNumber = async () => {
   const lastOrder = await Order.findOne().sort({ orderNumber: -1 });
   return lastOrder ? lastOrder.orderNumber + 1 : 1001;
+};
+
+// Secure tracking code generator
+const generateTrackingCode = () => {
+  // 12 bytes => 24 hex chars, unguessable
+  const token = crypto.randomBytes(12).toString("hex");
+  return `TRK-${token}`;
+};
+
+const hashTrackingCode = (code) => {
+  return crypto.createHash("sha256").update(String(code)).digest("hex");
+};
+
+/**
+ * PUBLIC: track order by tracking code (full details)
+ * GET /api/orders/track/:trackingCode
+ */
+export const trackOrderPublic = async (req, res, next) => {
+  try {
+    const trackingCode = String(req.params.trackingCode || "").trim();
+
+    if (!trackingCode || trackingCode.length < 8) {
+      res.status(400);
+      throw new Error("Tracking code is required");
+    }
+
+    const trackingHash = hashTrackingCode(trackingCode);
+
+    const order = await Order.findOne({ trackingHash }).populate("table", "number");
+
+    if (!order) {
+      res.status(404);
+      throw new Error("Order not found");
+    }
+
+    // Return FULL details (as you requested)
+    res.json({
+      success: true,
+      data: {
+        orderNumber: order.orderNumber,
+        orderType: order.orderType,
+        status: order.status,
+        billingStatus: order.billingStatus,
+
+        customerName: order.customerName || "",
+        customerPhone: order.customerPhone || "",
+        deliveryAddress: order.deliveryAddress || "",
+        paymentMethod: order.paymentMethod || "cash",
+
+        tableNumber: order.table?.number || null,
+
+        items: (order.items || []).map((it) => ({
+          name: it.name,
+          qty: it.qty,
+          price: it.price,
+          lineTotal: Number(((it.price || 0) * (it.qty || 0)).toFixed(2))
+        })),
+
+        subtotal: order.subtotal,
+        tax: order.tax,
+        discountPercent: order.discountPercent,
+        discount: order.discount,
+        total: order.total,
+
+        prepStartedAt: order.prepStartedAt,
+        estimatedPrepMinutes: order.estimatedPrepMinutes,
+        estimatedReadyAt: order.estimatedReadyAt,
+
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const getOrders = async (req, res, next) => {
@@ -143,7 +217,6 @@ export const createOrder = async (req, res, next) => {
         throw new Error(`Insufficient stock for ${menuItem.name}`);
       }
 
-      // Preserve price from payload if present (offline sync consistency)
       const unitPrice =
         item.price != null && !Number.isNaN(Number(item.price))
           ? Number(item.price)
@@ -181,22 +254,31 @@ export const createOrder = async (req, res, next) => {
 
     const orderNumber = await generateNextOrderNumber();
 
+    // NEW: tracking code + hash
+    const trackingCode = generateTrackingCode();
+    const trackingHash = hashTrackingCode(trackingCode);
+
     const order = await Order.create({
       orderNumber,
+      trackingHash,
+
       table: table ? table._id : null,
       orderType,
       customerName,
       customerPhone,
       deliveryAddress,
       paymentMethod,
+
       items: finalItems,
       subtotal,
       tax,
       discountPercent: safeDiscountPercent,
       discount,
       total,
+
       status: "pending",
       billingStatus: "pending",
+
       prepStartedAt: null,
       estimatedPrepMinutes: null,
       estimatedReadyAt: null
@@ -211,24 +293,26 @@ export const createOrder = async (req, res, next) => {
 
     const io = getIO();
 
-    // IMPORTANT: DO NOT emit orders to public sockets
+    // IMPORTANT: do NOT send orders to public sockets
     emitToStaff(io, "order:new", populatedOrder);
 
-    // Stock updates can go to public (customers need stock/availability)
     if (stockUpdates.length) {
       emitStockToEveryone(io, stockUpdates);
     }
 
-    // Table updates are safe to broadcast (table availability is public)
     if (table) {
       io.emit("table:updated", table);
       io.to("public").emit("table:updated", table);
     }
 
+    // Return trackingCode ONLY in the HTTP response (customer sees it once)
     res.status(201).json({
       success: true,
       message: "Order placed successfully",
-      data: populatedOrder
+      data: {
+        ...populatedOrder.toObject(),
+        trackingCode
+      }
     });
   } catch (error) {
     next(error);
@@ -297,8 +381,6 @@ export const updateOrderStatus = async (req, res, next) => {
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-
-    // IMPORTANT: DO NOT emit orders to public sockets
     emitToStaff(io, "order:updated", updatedOrder);
 
     if (table) {
@@ -363,8 +445,6 @@ export const deleteOrder = async (req, res, next) => {
     await order.deleteOne();
 
     const io = getIO();
-
-    // IMPORTANT: DO NOT emit orders to public sockets
     emitToStaff(io, "order:deleted", { _id: req.params.id, orderNumber: order.orderNumber });
 
     if (stockUpdates.length) {
@@ -407,8 +487,6 @@ export const updateBillingStatus = async (req, res, next) => {
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-
-    // IMPORTANT: billing/order updates only to staff, not public
     emitToStaff(io, "order:updated", updatedOrder);
 
     res.json({

@@ -1933,7 +1933,7 @@ pre {
 
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -3472,5 +3472,192 @@ pre {
     position: absolute;
     left: 0;
     top: 0;
+  }
+}
+
+/* ============================================================
+   MOBILE OVERRIDES (UPGRADED PHONES)
+   ============================================================ */
+@media (max-width: 600px) {
+
+  .public-hero {
+    margin-bottom: 12px !important;
+  }
+
+  .public-hero-banner {
+    padding: 12px 14px !important;
+    gap: 10px !important;
+  }
+
+  .public-brand {
+    gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .public-brand-logo {
+    width: 45px !important;
+    height: 45px !important;
+    font-size: 0.9rem !important;
+    min-width: 45px !important;
+  }
+
+  .public-brand h1 {
+    font-size: 1.15rem !important;
+    margin-bottom: 2px !important;
+  }
+
+  .public-brand p {
+    font-size: 0.78rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .public-discount-banner {
+    margin-top: 4px !important;
+    padding: 6px 10px !important;
+    font-size: 0.75rem !important;
+  }
+
+  .public-hero-actions {
+    margin-top: 2px !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .public-hero-actions .btn-icon {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  .menu-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .public-menu-card {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    padding-bottom: 8px !important;
+  }
+
+  .public-menu-card .menu-card-img {
+    height: 110px !important;
+    min-height: 110px !important;
+  }
+
+  .public-menu-card .menu-card-body {
+    padding: 10px !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+  }
+
+  .public-menu-card .menu-card-body h4 {
+    font-size: 0.88rem !important;
+    font-weight: 800 !important;
+    line-height: 1.3 !important;
+  }
+
+  .public-menu-card .menu-category {
+    font-size: 0.7rem !important;
+  }
+
+  .public-menu-card .menu-item-description {
+    font-size: 0.72rem !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    line-height: 1.4 !important;
+    color: var(--text-muted) !important;
+    height: 32px !important;
+  }
+
+  .public-menu-card .menu-price {
+    font-size: 0.95rem !important;
+    font-weight: 800 !important;
+    margin-top: auto !important;
+  }
+
+  .public-menu-card .public-order-footer {
+    padding: 0 10px !important;
+    margin-top: 4px !important;
+  }
+
+  .public-menu-card .public-order-btn {
+    width: 100% !important;
+    padding: 8px !important;
+    font-size: 0.8rem !important;
+    border-radius: 8px !important;
+  }
+
+  /* Compact Public Customer Reviews on Phone */
+  #publicReviewsSection .card {
+    padding: 12px !important;
+    margin-top: 16px !important;
+  }
+
+  #publicReviewsSection .card-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  #publicReviewsSection .card-title {
+    font-size: 0.9rem !important;
+  }
+
+  #publicReviewsSection .card-subtitle {
+    font-size: 0.7rem !important;
+  }
+
+  #publicReviewsSection .card-header div:last-child {
+    display: flex !important;
+    width: 100% !important;
+    gap: 6px !important;
+  }
+
+  #publicReviewsSection .card-header .btn {
+    flex: 1 !important;
+    justify-content: center !important;
+    padding: 6px !important;
+    font-size: 0.75rem !important;
+  }
+
+  #publicReviewsSection .card[style*="background:var(--bg-card)"] {
+    padding: 10px !important;
+  }
+
+  #publicReviewsSection .card[style*="background:var(--bg-card)"] div:first-child {
+    font-size: 0.8rem !important;
+    margin-bottom: 4px !important;
+  }
+
+  #publicReviewsSection .card[style*="background:var(--bg-card)"] .text-secondary {
+    font-size: 0.78rem !important;
+    line-height: 1.4 !important;
+  }
+}
+
+/* Staff summary: force 2 columns on phone */
+@media (max-width: 520px) {
+  .staff-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+
+  .staff-summary-card {
+    padding: 12px;
+  }
+
+  .staff-summary-value {
+    font-size: 1.2rem;
+  }
+
+  .staff-summary-label {
+    font-size: 0.72rem;
   }
 }

@@ -5,12 +5,15 @@ const PublicHome = {
   searchText: '',
   reviewRating: 5,
 
+  // NEW: store recent tracking codes on device for convenience
+  trackingHistoryKey: 'restaurantos_tracking_history',
+
   render() {
     this.renderLayout();
     this.renderHero();
     this.renderFilters();
     this.renderMenuGrid();
-    this.renderReviewsSection(); // NEW
+    this.renderReviewsSection();
     this.updateCartBadge();
   },
 
@@ -27,6 +30,7 @@ const PublicHome = {
     return Store.get('tables') || [];
   },
 
+  // keep (not used for tracking anymore; staff-only in secure mode)
   getOrders() {
     return Store.get('orders') || [];
   },
@@ -100,7 +104,6 @@ const PublicHome = {
 
         <div class="menu-grid" id="publicMenuGrid"></div>
 
-        <!-- NEW: Reviews section container -->
         <div id="publicReviewsSection"></div>
       </div>
     `;
@@ -162,9 +165,7 @@ const PublicHome = {
     `;
 
     const searchInput = this.byId('publicMenuSearch');
-    if (searchInput) {
-      searchInput.value = this.searchText || '';
-    }
+    if (searchInput) searchInput.value = this.searchText || '';
 
     this.updateCartBadge();
   },
@@ -272,7 +273,7 @@ const PublicHome = {
         <div class="modal-stack">
           <div class="panel-muted">Browse our menu and place orders for delivery or table dining.</div>
           <div class="panel-muted">Add multiple dishes to your cart and place one complete order.</div>
-          <div class="panel-muted">Staff can log in using the login icon to manage kitchen, billing, and inventory.</div>
+          <div class="panel-muted">Use your tracking code to view full details from any device.</div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">Close</button>`
@@ -566,7 +567,60 @@ const PublicHome = {
     };
   },
 
+  // ===========================
+  // NEW: tracking code utilities
+  // ===========================
+  getTrackingHistory() {
+    try {
+      const raw = localStorage.getItem(this.trackingHistoryKey);
+      const list = JSON.parse(raw || '[]');
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveTrackingHistory(list) {
+    localStorage.setItem(this.trackingHistoryKey, JSON.stringify(list || []));
+  },
+
+  addTrackingToHistory({ trackingCode, orderNumber }) {
+    if (!trackingCode) return;
+
+    const existing = this.getTrackingHistory();
+
+    const next = [
+      { trackingCode, orderNumber: orderNumber || null, savedAt: Date.now() },
+      ...existing.filter((x) => x?.trackingCode !== trackingCode)
+    ].slice(0, 6);
+
+    this.saveTrackingHistory(next);
+  },
+
+  async copyTrackingCode(code) {
+    if (!code) {
+      App.toast('Tracking code not found', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(String(code));
+      App.toast('Tracking code copied', 'success');
+    } catch {
+      App.toast('Copy failed', 'error');
+    }
+  },
+
+  // ---------- NEW: Show tracking code after placing order ----------
   showOrderPlacedModal(orderData) {
+    const trackingCode = orderData?.trackingCode || '';
+
+    // Save tracking code for customer convenience
+    this.addTrackingToHistory({
+      trackingCode,
+      orderNumber: orderData?.orderNumber
+    });
+
     const estimatedText = orderData.estimatedPrepMinutes
       ? `Estimated completion time: <strong>${orderData.estimatedPrepMinutes} min</strong>`
       : `Your order is waiting for kitchen confirmation. Estimated completion time will appear once cooking starts.`;
@@ -578,18 +632,50 @@ const PublicHome = {
           <div class="panel-muted"><strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}</div>
           <div class="panel-info">${estimatedText}</div>
           <div class="panel-muted">Total: <strong>${App.currency(orderData.total || 0)}</strong></div>
+
+          <div class="panel-muted">
+            <div style="font-weight:900;margin-bottom:8px">Tracking Code (save this)</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
+                ${App.safeText(trackingCode || '-')}
+              </code>
+              <button class="btn btn-secondary btn-xs" onclick="PublicHome.copyTrackingCode(${JSON.stringify(trackingCode)})">Copy</button>
+            </div>
+            <div class="text-soft" style="margin-top:8px">
+              Use this tracking code to view full order details from any device.
+            </div>
+          </div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">OK</button>`
     );
   },
 
+  // ---------- NEW: Track Order (by tracking code, server-based) ----------
   openTrackOrderModal() {
+    const history = this.getTrackingHistory();
+
+    const historyHtml = history.length
+      ? `
+        <div class="form-group">
+          <label class="form-label">Recent Tracking Codes</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${history.map((h) => `
+              <button class="btn btn-secondary btn-xs" onclick="PublicHome.fillTrackingCode(${JSON.stringify(h.trackingCode)})">
+                ${App.safeText(h.trackingCode)}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `
+      : '';
+
     const body = `
       <div class="form-group">
-        <label class="form-label">Order Number</label>
-        <input type="text" class="form-input" id="trackOrderNumber" placeholder="Enter your order number">
+        <label class="form-label">Tracking Code</label>
+        <input type="text" class="form-input" id="trackOrderCode" placeholder="e.g. TRK-xxxxxxxxxxxxxxxxxxxxxxxx">
       </div>
+      ${historyHtml}
     `;
 
     const footer = `
@@ -600,41 +686,121 @@ const PublicHome = {
     App.openModal('Track Your Order', body, footer);
   },
 
-  trackOrder() {
-    const orderNumber = (this.byId('trackOrderNumber')?.value || '').trim();
-    if (!orderNumber) {
-      App.toast('Please enter your order number', 'warning');
-      return;
-    }
-
-    const order = this.getOrders().find((entry) => String(entry.id) === String(orderNumber));
-    if (!order) {
-      App.toast('Order not found', 'error');
-      return;
-    }
-
-    const timingHtml = order.estimatedPrepMinutes
-      ? `
-        <div class="panel-info">
-          <strong>Estimated Time:</strong> ${order.estimatedPrepMinutes} min<br>
-          <strong>Expected Ready:</strong> ${App.formatDateTime(order.estimatedReadyAt)}
-        </div>
-      `
-      : `<div class="panel-muted">Kitchen has not started cooking yet.</div>`;
-
-    App.openModal(
-      `Order #${order.id}`,
-      `
-        <div class="modal-stack">
-          <div class="panel-muted"><strong>Status:</strong> ${App.safeText(order.status)}</div>
-          ${timingHtml}
-          <div class="panel-muted"><strong>Total:</strong> ${App.currency(order.total || 0)}</div>
-        </div>
-      `,
-      `<button class="btn btn-primary" onclick="App.closeModal()">Close</button>`
-    );
+  fillTrackingCode(code) {
+    const input = this.byId('trackOrderCode');
+    if (input) input.value = code || '';
   },
 
+  async trackOrder() {
+    const code = (this.byId('trackOrderCode')?.value || '').trim();
+
+    if (!code) {
+      App.toast('Please enter your tracking code', 'warning');
+      return;
+    }
+
+    try {
+      const json = await Store.request(`/orders/track/${encodeURIComponent(code)}`);
+      const o = json.data || {};
+
+      const itemsHtml = (o.items || []).map((it) => `
+        <div class="receipt-row">
+          <span>${Number(it.qty || 0)}x ${App.safeText(it.name)}</span>
+          <span>${App.currency(it.lineTotal != null ? it.lineTotal : (Number(it.price || 0) * Number(it.qty || 0)))}</span>
+        </div>
+      `).join('');
+
+      const addressHtml =
+        o.orderType === 'delivery'
+          ? `
+            <div class="receipt-row">
+              <span>Address</span>
+              <span class="receipt-multiline-value">${App.safeText(o.deliveryAddress || '-')}</span>
+            </div>
+          `
+          : `
+            <div class="receipt-row"><span>Table</span><span>${o.tableNumber != null ? App.safeText(o.tableNumber) : '-'}</span></div>
+          `;
+
+      const timingHtml = o.estimatedPrepMinutes
+        ? `
+          <div class="panel-info">
+            <strong>Estimated:</strong> ${Number(o.estimatedPrepMinutes)} min<br>
+            <strong>Ready At:</strong> ${o.estimatedReadyAt ? new Date(o.estimatedReadyAt).toLocaleString() : '-'}
+          </div>
+        `
+        : `<div class="panel-muted">Kitchen has not started cooking yet.</div>`;
+
+      App.openModal(
+        `Order #${App.safeText(o.orderNumber)}`,
+        `
+          <div class="modal-stack">
+            <div class="panel-muted"><strong>Status:</strong> ${App.safeText(o.status || '-')}</div>
+            ${timingHtml}
+
+            <div class="receipt-preview" style="margin-top:10px" id="publicTrackedOrderPrint">
+              <div class="receipt-row"><span>Ordered At</span><span>${o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</span></div>
+              <div class="receipt-row"><span>Type</span><span>${App.safeText(o.orderType || '-')}</span></div>
+              <div class="receipt-row"><span>Customer</span><span>${App.safeText(o.customerName || 'Guest')}</span></div>
+              <div class="receipt-row"><span>Phone</span><span>${App.safeText(o.customerPhone || '-')}</span></div>
+              ${addressHtml}
+              <div class="receipt-row"><span>Payment</span><span>${App.safeText(o.paymentMethod || '-')}</span></div>
+
+              <hr class="receipt-divider">
+              <div class="receipt-section-title">Items</div>
+              ${itemsHtml || '<div class="panel-muted">No items</div>'}
+
+              <hr class="receipt-divider">
+              <div class="receipt-row"><span>Subtotal</span><span>${App.currency(o.subtotal || 0)}</span></div>
+              <div class="receipt-row"><span>Tax</span><span>${App.currency(o.tax || 0)}</span></div>
+              <div class="receipt-row"><span>Discount (${Number(o.discountPercent || 0)}%)</span><span>-${App.currency(o.discount || 0)}</span></div>
+              <div class="receipt-row bold"><span>Total</span><span>${App.currency(o.total || 0)}</span></div>
+            </div>
+          </div>
+        `,
+        `
+          <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
+          <button class="btn btn-primary" onclick="PublicHome.printTrackedOrder()">Print</button>
+        `
+      );
+    } catch (error) {
+      App.toast(error.message || 'Order not found', 'error');
+    }
+  },
+
+  printTrackedOrder() {
+    const el = this.byId('publicTrackedOrderPrint');
+    if (!el) return App.toast('Printable view not found', 'error');
+
+    const w = window.open('', '_blank', 'width=420,height=700');
+    if (!w) return App.toast('Unable to open print window', 'error');
+
+    w.document.write(`
+      <html>
+        <head>
+          <title>Order Details</title>
+          <style>
+            body { font-family: 'Courier New', monospace; padding: 20px; max-width: 380px; margin: 0 auto; }
+            .receipt-divider { border: none; border-top: 1px dashed #ccc; margin: 12px 0; }
+            .receipt-row { display:flex; justify-content:space-between; font-size:0.82rem; padding:2px 0; gap:8px; }
+            .receipt-row.bold { font-weight:700; font-size:0.95rem; }
+            .receipt-section-title { font-weight:700; margin-bottom:6px; }
+            .receipt-multiline-value { text-align:right; max-width: 180px; }
+          </style>
+        </head>
+        <body>${el.innerHTML}</body>
+      </html>
+    `);
+
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      w.print();
+      w.close();
+    }, 300);
+  },
+
+  // ---------- Submit order ----------
   async submitCartOrder() {
     if (!this.cart.length) {
       App.toast('Your cart is empty', 'warning');
@@ -674,8 +840,10 @@ const PublicHome = {
       this.selectedTableId = '';
       this.updateCartBadge();
 
+      // IMPORTANT: do NOT fetch all orders publicly (security + your system now restricts this)
+      // Menu/tables are safe to refresh (and also sockets update stock/tables)
       await Store.fetchMenuItems();
-      await Store.fetchOrders();
+      await Store.fetchTables();
 
       App.closeModal();
       this.showOrderPlacedModal(json.data);
@@ -688,7 +856,7 @@ const PublicHome = {
   },
 
   // ============================================================
-  // REVIEWS / FEEDBACK (NEW)
+  // REVIEWS / FEEDBACK (unchanged)
   // ============================================================
 
   getTopReviews(limit = 3) {
