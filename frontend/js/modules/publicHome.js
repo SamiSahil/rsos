@@ -5,6 +5,12 @@ const PublicHome = {
   searchText: '',
   reviewRating: 5,
 
+  // ✅ missing in your pasted file but used by tracking methods
+  trackingHistoryKey: 'restaurantos_tracking_history',
+
+  // internal handler ref for event delegation
+  _paymentHandler: null,
+
   render() {
     this.renderLayout();
     this.renderHero();
@@ -44,7 +50,7 @@ const PublicHome = {
   },
 
   // ============================================================
-  // ONLINE PAYMENT HELPERS (Option 1 + Option 2)
+  // ONLINE PAYMENT HELPERS
   // ============================================================
   isOnlinePaymentMethod(method) {
     return ['bKash', 'Nagad', 'Rocket'].includes(String(method || '').trim());
@@ -76,19 +82,59 @@ const PublicHome = {
     }
   },
 
+  // ✅ Event delegation for modal content (fixes your console SyntaxError)
+  bindPaymentActions() {
+    const root = document.getElementById('modalBody'); // App.openModal injects here
+    if (!root) return;
+
+    // remove old handler if exists to avoid double events
+    if (this._paymentHandler) {
+      root.removeEventListener('click', this._paymentHandler);
+    }
+
+    this._paymentHandler = async (e) => {
+      const openBtn = e.target.closest('.js-open-qr');
+      if (openBtn) {
+        const method = openBtn.dataset.method;
+        this.openQrPreview(method);
+        return;
+      }
+
+      const dlBtn = e.target.closest('.js-download-qr');
+      if (dlBtn) {
+        const method = dlBtn.dataset.method;
+        this.downloadQr(method);
+        return;
+      }
+
+      const copyBtn = e.target.closest('.js-copy-merchant');
+      if (copyBtn) {
+        const merchant = copyBtn.dataset.merchant || '';
+        await this.copyText(merchant, 'Merchant number copied');
+        return;
+      }
+    };
+
+    root.addEventListener('click', this._paymentHandler);
+  },
+
   openQrPreview(method) {
     const meta = this.getPaymentMeta(method);
     if (!meta?.qrImage) return App.toast('QR not configured', 'warning');
 
-    const merchant = meta.merchantNumber || '-';
+    const merchant = String(meta.merchantNumber || '-').trim();
 
+    // ✅ Use data-attributes + event delegation (no inline JS injection)
     App.openModal(
       `${App.safeText(method)} QR`,
       `
         <div class="modal-stack">
           <div style="display:flex;justify-content:center">
-            <img src="${meta.qrImage}" alt="${App.safeText(method)} QR"
-              style="width:260px;height:260px;object-fit:cover;border-radius:16px;border:1px solid rgba(255,255,255,0.08)">
+            <img
+              src="${meta.qrImage}"
+              alt="${App.safeText(method)} QR"
+              style="width:260px;height:260px;object-fit:cover;border-radius:16px;border:1px solid rgba(255,255,255,0.08)"
+            >
           </div>
 
           <div class="panel-muted">
@@ -97,10 +143,12 @@ const PublicHome = {
               <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
                 ${App.safeText(merchant)}
               </code>
-              <button class="btn btn-secondary btn-xs"
-                onclick="PublicHome.copyText(${JSON.stringify(merchant)}, 'Merchant number copied')">
-                Copy
-              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary btn-xs js-copy-merchant"
+                data-merchant="${App.escapeHTML(merchant)}"
+              >Copy</button>
             </div>
 
             <div class="text-soft" style="margin-top:8px">
@@ -115,9 +163,12 @@ const PublicHome = {
       `,
       `
         <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
-        <button class="btn btn-primary" onclick="PublicHome.downloadQr(${JSON.stringify(method)})">Download QR</button>
+        <button type="button" class="btn btn-primary js-download-qr" data-method="${App.escapeHTML(method)}">Download QR</button>
       `
     );
+
+    // ✅ bind after opening modal
+    this.bindPaymentActions();
   },
 
   downloadQr(method) {
@@ -146,10 +197,11 @@ const PublicHome = {
           <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
             ${App.safeText(merchant)}
           </code>
-          <button class="btn btn-secondary btn-xs"
-            onclick="PublicHome.copyText(${JSON.stringify(merchant)}, 'Merchant number copied')">
-            Copy
-          </button>
+          <button
+            class="btn btn-secondary btn-xs js-copy-merchant"
+            type="button"
+            data-merchant="${App.escapeHTML(merchant)}"
+          >Copy</button>
         </div>
       `
       : `<div class="panel-warning" style="margin-top:10px">Merchant number is not configured.</div>`;
@@ -160,14 +212,15 @@ const PublicHome = {
           <img
             src="${qr}"
             alt="${App.safeText(method)} QR"
-            onclick="PublicHome.openQrPreview(${JSON.stringify(method)})"
+            class="js-open-qr"
+            data-method="${App.escapeHTML(method)}"
             style="width:180px;height:180px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,0.08);cursor:pointer"
           >
         </div>
 
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
-          <button class="btn btn-secondary btn-xs" onclick="PublicHome.openQrPreview(${JSON.stringify(method)})">Open QR</button>
-          <button class="btn btn-secondary btn-xs" onclick="PublicHome.downloadQr(${JSON.stringify(method)})">Download QR</button>
+          <button class="btn btn-secondary btn-xs js-open-qr" type="button" data-method="${App.escapeHTML(method)}">Open QR</button>
+          <button class="btn btn-secondary btn-xs js-download-qr" type="button" data-method="${App.escapeHTML(method)}">Download QR</button>
         </div>
 
         <div class="text-soft" style="text-align:center;margin-top:8px">
@@ -215,6 +268,9 @@ const PublicHome = {
     }
 
     wrap.innerHTML = this.renderOnlinePaymentBox(method, total);
+
+    // ✅ Important: bind after injecting dynamic HTML
+    this.bindPaymentActions();
   },
 
   // ---------- Search / Filter ----------
@@ -615,6 +671,10 @@ const PublicHome = {
     `;
 
     App.openModal('Place Your Order', body, footer);
+
+    // ✅ bind after modal open
+    this.bindPaymentActions();
+
     this.toggleOrderTypeFields();
     this.togglePaymentMethodFields();
   },
@@ -673,7 +733,7 @@ const PublicHome = {
   },
 
   // ===========================
-  // NEW: tracking code utilities
+  // Tracking code utilities
   // ===========================
   getTrackingHistory() {
     try {
@@ -716,7 +776,7 @@ const PublicHome = {
     }
   },
 
-  // ---------- NEW: Show tracking code after placing order ----------
+ // ---------- NEW: Show tracking code after placing order ----------
   showOrderPlacedModal(orderData) {
     const trackingCode = orderData?.trackingCode || '';
 
@@ -732,25 +792,49 @@ const PublicHome = {
 
     const isOnline = this.isOnlinePaymentMethod(orderData.paymentMethod);
 
+    // ✅ FIX: Create the tracking code box safely with a Copy button
+    const trackingHtml = trackingCode
+      ? `
+        <div class="panel-muted" style="display:flex; justify-content:space-between; align-items:center; gap:12px; border: 1px dashed var(--accent);">
+          <div style="overflow: hidden;">
+            <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Tracking Code</div>
+            <strong style="color:var(--accent); font-size:1.1rem; letter-spacing:1px; word-break:break-all;">
+              ${App.safeText(trackingCode)}
+            </strong>
+          </div>
+          <!-- JSON.stringify ensures the string is safely wrapped in quotes to prevent SyntaxErrors -->
+          <button class="btn btn-secondary btn-xs" style="flex-shrink:0;" onclick='PublicHome.copyTrackingCode(${JSON.stringify(trackingCode)})'>
+            Copy
+          </button>
+        </div>
+      `
+      : '';
+
     App.openModal(
       `Order #${orderData.orderNumber} Placed`,
       `
         <div class="modal-stack">
+          ${trackingHtml}
+          
           <div class="panel-muted"><strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}</div>
+          
           ${
             isOnline
               ? `<div class="panel-warning"><strong>Online payment:</strong> Staff will confirm your Transaction ID before completing billing.</div>`
               : ''
           }
+          
           <div class="panel-info">${estimatedText}</div>
-          <div class="panel-muted">Total: <strong>${App.currency(orderData.total || 0)}</strong></div>
+          
+          <div class="panel-muted" style="font-size: 1.1rem;">
+            Total: <strong>${App.currency(orderData.total || 0)}</strong>
+          </div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">OK</button>`
     );
   },
 
-  // ---------- NEW: Track Order (by tracking code, server-based) ----------
   openTrackOrderModal() {
     const history = this.getTrackingHistory();
 
@@ -911,7 +995,6 @@ const PublicHome = {
     const deliveryAddress = (this.byId('publicDeliveryAddress')?.value || '').trim();
     const paymentMethod = this.byId('publicPaymentMethod')?.value || 'cash';
 
-    // transaction ID field exists only for online methods (created dynamically)
     const transactionId = (this.byId('publicTransactionId')?.value || '').trim();
     const tableId = this.byId('publicTableSelect')?.value || '';
 
@@ -961,7 +1044,7 @@ const PublicHome = {
   },
 
   // ============================================================
-  // REVIEWS / FEEDBACK (unchanged)
+  // REVIEWS / FEEDBACK
   // ============================================================
   getTopReviews(limit = 3) {
     return [...this.getFeedback()]
