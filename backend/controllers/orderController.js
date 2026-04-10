@@ -20,9 +20,7 @@ const generateNextOrderNumber = async () => {
   return lastOrder ? lastOrder.orderNumber + 1 : 1001;
 };
 
-// Secure tracking code generator
 const generateTrackingCode = () => {
-  // 12 bytes => 24 hex chars, unguessable
   const token = crypto.randomBytes(12).toString("hex");
   return `TRK-${token}`;
 };
@@ -45,7 +43,6 @@ export const trackOrderPublic = async (req, res, next) => {
     }
 
     const trackingHash = hashTrackingCode(trackingCode);
-
     const order = await Order.findOne({ trackingHash }).populate("table", "number");
 
     if (!order) {
@@ -53,7 +50,6 @@ export const trackOrderPublic = async (req, res, next) => {
       throw new Error("Order not found");
     }
 
-    // Return FULL details (as you requested)
     res.json({
       success: true,
       data: {
@@ -66,6 +62,9 @@ export const trackOrderPublic = async (req, res, next) => {
         customerPhone: order.customerPhone || "",
         deliveryAddress: order.deliveryAddress || "",
         paymentMethod: order.paymentMethod || "cash",
+
+        // ✅ include txn id (tracking code is secret)
+        paymentTransactionId: order.paymentTransactionId || "",
 
         tableNumber: order.table?.number || null,
 
@@ -86,6 +85,8 @@ export const trackOrderPublic = async (req, res, next) => {
         estimatedPrepMinutes: order.estimatedPrepMinutes,
         estimatedReadyAt: order.estimatedReadyAt,
 
+        billingCompletedAt: order.billingCompletedAt,
+
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }
@@ -100,13 +101,9 @@ export const getOrders = async (req, res, next) => {
     const { status, search } = req.query;
     const filter = {};
 
-    if (status && status !== "all") {
-      filter.status = status;
-    }
+    if (status && status !== "all") filter.status = status;
 
-    let orders = await Order.find(filter)
-      .populate("table")
-      .sort({ createdAt: -1 });
+    let orders = await Order.find(filter).populate("table").sort({ createdAt: -1 });
 
     if (search) {
       orders = orders.filter(
@@ -118,11 +115,7 @@ export const getOrders = async (req, res, next) => {
       );
     }
 
-    res.json({
-      success: true,
-      count: orders.length,
-      data: orders
-    });
+    res.json({ success: true, count: orders.length, data: orders });
   } catch (error) {
     next(error);
   }
@@ -137,10 +130,7 @@ export const getOrderById = async (req, res, next) => {
       throw new Error("Order not found");
     }
 
-    res.json({
-      success: true,
-      data: order
-    });
+    res.json({ success: true, data: order });
   } catch (error) {
     next(error);
   }
@@ -156,8 +146,12 @@ export const createOrder = async (req, res, next) => {
       customerPhone = "",
       deliveryAddress = "",
       paymentMethod = "cash",
+      paymentTransactionId = "",
       discountPercent = 0
     } = req.body;
+
+    const onlineMethods = ["bKash", "Nagad", "Rocket"];
+    const safeTxnId = String(paymentTransactionId || "").trim();
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400);
@@ -182,6 +176,14 @@ export const createOrder = async (req, res, next) => {
     if (orderType === "dine-in" && !tableId) {
       res.status(400);
       throw new Error("Table ID is required for dine-in orders");
+    }
+
+    // ✅ Require txn id for online payments
+    if (onlineMethods.includes(paymentMethod)) {
+      if (!safeTxnId || safeTxnId.length < 6) {
+        res.status(400);
+        throw new Error("Transaction ID is required for bKash/Nagad/Rocket payments");
+      }
     }
 
     let table = null;
@@ -232,11 +234,7 @@ export const createOrder = async (req, res, next) => {
         price: unitPrice
       });
 
-      stockUpdates.push({
-        menuId: menuItem._id.toString(),
-        stock: menuItem.stock
-      });
-
+      stockUpdates.push({ menuId: menuItem._id.toString(), stock: menuItem.stock });
       subtotal += unitPrice * item.qty;
     }
 
@@ -254,7 +252,6 @@ export const createOrder = async (req, res, next) => {
 
     const orderNumber = await generateNextOrderNumber();
 
-    // NEW: tracking code + hash
     const trackingCode = generateTrackingCode();
     const trackingHash = hashTrackingCode(trackingCode);
 
@@ -269,6 +266,9 @@ export const createOrder = async (req, res, next) => {
       deliveryAddress,
       paymentMethod,
 
+      // ✅ Save txn id for online payment methods
+      paymentTransactionId: onlineMethods.includes(paymentMethod) ? safeTxnId : "",
+
       items: finalItems,
       subtotal,
       tax,
@@ -278,6 +278,7 @@ export const createOrder = async (req, res, next) => {
 
       status: "pending",
       billingStatus: "pending",
+      billingCompletedAt: null,
 
       prepStartedAt: null,
       estimatedPrepMinutes: null,
@@ -290,10 +291,8 @@ export const createOrder = async (req, res, next) => {
     }
 
     const populatedOrder = await Order.findById(order._id).populate("table");
-
     const io = getIO();
 
-    // IMPORTANT: do NOT send orders to public sockets
     emitToStaff(io, "order:new", populatedOrder);
 
     if (stockUpdates.length) {
@@ -305,7 +304,6 @@ export const createOrder = async (req, res, next) => {
       io.to("public").emit("table:updated", table);
     }
 
-    // Return trackingCode ONLY in the HTTP response (customer sees it once)
     res.status(201).json({
       success: true,
       message: "Order placed successfully",
@@ -329,7 +327,6 @@ export const updateOrderStatus = async (req, res, next) => {
     }
 
     const order = await Order.findById(req.params.id).populate("table");
-
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
@@ -337,7 +334,6 @@ export const updateOrderStatus = async (req, res, next) => {
 
     if (status === "in-progress") {
       const prepMinutes = Number(estimatedPrepMinutes || 0);
-
       if (prepMinutes <= 0) {
         res.status(400);
         throw new Error("Estimated preparation time is required");
@@ -361,7 +357,6 @@ export const updateOrderStatus = async (req, res, next) => {
     await order.save();
 
     let table = null;
-
     if (status === "completed" && order.table?._id) {
       const activeOrders = await Order.find({
         table: order.table._id,
@@ -388,11 +383,7 @@ export const updateOrderStatus = async (req, res, next) => {
       io.to("public").emit("table:updated", table);
     }
 
-    res.json({
-      success: true,
-      message: "Order status updated successfully",
-      data: updatedOrder
-    });
+    res.json({ success: true, message: "Order status updated successfully", data: updatedOrder });
   } catch (error) {
     next(error);
   }
@@ -401,7 +392,6 @@ export const updateOrderStatus = async (req, res, next) => {
 export const deleteOrder = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id).populate("table");
-
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
@@ -415,17 +405,12 @@ export const deleteOrder = async (req, res, next) => {
         if (menuItem) {
           menuItem.stock += item.qty;
           await menuItem.save();
-
-          stockUpdates.push({
-            menuId: menuItem._id.toString(),
-            stock: menuItem.stock
-          });
+          stockUpdates.push({ menuId: menuItem._id.toString(), stock: menuItem.stock });
         }
       }
     }
 
     let table = null;
-
     if (order.table?._id) {
       const activeOrders = await Order.find({
         table: order.table._id,
@@ -456,10 +441,7 @@ export const deleteOrder = async (req, res, next) => {
       io.to("public").emit("table:updated", table);
     }
 
-    res.json({
-      success: true,
-      message: "Order deleted successfully"
-    });
+    res.json({ success: true, message: "Order deleted successfully" });
   } catch (error) {
     next(error);
   }
@@ -467,7 +449,7 @@ export const deleteOrder = async (req, res, next) => {
 
 export const updateBillingStatus = async (req, res, next) => {
   try {
-    const { billingStatus } = req.body;
+    const { billingStatus, paymentTransactionId } = req.body;
 
     if (!["pending", "completed"].includes(billingStatus)) {
       res.status(400);
@@ -475,15 +457,36 @@ export const updateBillingStatus = async (req, res, next) => {
     }
 
     const order = await Order.findById(req.params.id).populate("table");
-
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
     }
 
+    const onlineMethods = ["bKash", "Nagad", "Rocket"];
+    const isOnline = onlineMethods.includes(order.paymentMethod);
+
+    // ✅ Enforce match when completing billing for online payments
+    if (billingStatus === "completed" && isOnline) {
+      const entered = String(paymentTransactionId || "").trim();
+      const stored = String(order.paymentTransactionId || "").trim();
+
+      if (!stored) {
+        res.status(400);
+        throw new Error("This order has no stored transaction ID");
+      }
+      if (!entered) {
+        res.status(400);
+        throw new Error("Transaction ID is required to complete billing for online payment");
+      }
+      if (entered !== stored) {
+        res.status(403);
+        throw new Error("Transaction ID does not match. Billing cannot be completed.");
+      }
+    }
+
     order.billingStatus = billingStatus;
 
-    // ✅ Accounting timestamp
+    // ✅ accounting timestamp (used by dashboard/analytics accounting revenue)
     if (billingStatus === "completed") {
       order.billingCompletedAt = new Date();
     } else {
@@ -495,8 +498,8 @@ export const updateBillingStatus = async (req, res, next) => {
     const updatedOrder = await Order.findById(order._id).populate("table");
 
     const io = getIO();
-    // emit only to staff if you applied the staff-only emit fix earlier
-    io.emit("order:updated", updatedOrder);
+    // ✅ staff only (no public leak)
+    emitToStaff(io, "order:updated", updatedOrder);
 
     res.json({
       success: true,

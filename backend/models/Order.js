@@ -114,6 +114,7 @@ const orderSchema = new mongoose.Schema(
       enum: ["pending", "completed"],
       default: "pending"
     },
+    paymentTransactionId: { type: String, default: "", trim: true },
     billingCompletedAt: {
       type: Date,
       default: null,

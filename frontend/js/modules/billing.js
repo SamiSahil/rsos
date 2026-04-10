@@ -1,14 +1,6 @@
 const Billing = {
   currentOrder: null,
 
-  paymentConfig: {
-    tip: 0,
-    discount: 0,
-    serviceCharge: 0,
-    split: 1,
-    method: 'cash'
-  },
-
   render() {
     this.renderTable();
   },
@@ -35,7 +27,8 @@ const Billing = {
 
   getFilteredOrders() {
     let orders = [...this.getOrders()].sort((a, b) => b.timestamp - a.timestamp);
-    orders = orders.slice(0, 15); // Limit to 15 most recent orders for performance
+    orders = orders.slice(0, 30);
+
     const search = this.getSearchText();
     const statusFilter = this.getStatusFilter();
 
@@ -55,30 +48,19 @@ const Billing = {
     return orders;
   },
 
-  getBillingStatusBadge(status) {
-    const map = {
-      pending: 'badge-warning',
-      completed: 'badge-success'
-    };
+  isOnlineMethod(method) {
+    return ['bKash', 'Nagad', 'Rocket'].includes(String(method || '').trim());
+  },
 
+  getBillingStatusBadge(status) {
+    const map = { pending: 'badge-warning', completed: 'badge-success' };
     return `<span class="badge ${map[status] || 'badge-warning'}">${App.safeText(status)}</span>`;
   },
 
   getTypeBadge(type) {
-    if (type === 'delivery') {
-      return `<span class="badge badge-purple">Delivery</span>`;
-    }
-
-    return `<span class="badge badge-accent">Dine-in</span>`;
-  },
-
-  getOfflineBadge(order) {
-    if (!order.offlineQueued) return '';
-    return `
-      <div class="billing-inline-badge-wrap">
-        <span class="badge badge-warning">Offline Queue</span>
-      </div>
-    `;
+    return type === 'delivery'
+      ? `<span class="badge badge-purple">Delivery</span>`
+      : `<span class="badge badge-accent">Dine-in</span>`;
   },
 
   renderCustomerBlock(order) {
@@ -92,38 +74,20 @@ const Billing = {
 
   renderTableRow(order) {
     const billingStatus = order.billingStatus || 'pending';
-
     return `
       <tr>
         <td class="billing-strong-cell">#${App.safeText(order.id)}</td>
-
         <td>
-          ${
-            order.orderType === 'dine-in'
-              ? `Table ${App.safeText(order.table || '-')}`
-              : `<span class="billing-muted-dash">—</span>`
-          }
+          ${order.orderType === 'dine-in' ? `Table ${App.safeText(order.table || '-')}` : `<span class="billing-muted-dash">—</span>`}
         </td>
-
         <td>${this.getTypeBadge(order.orderType || 'dine-in')}</td>
-
         <td>${this.renderCustomerBlock(order)}</td>
-
         <td class="billing-strong-cell">${App.currency(order.total)}</td>
-
-        <td>
-          ${this.getBillingStatusBadge(billingStatus)}
-          ${this.getOfflineBadge(order)}
-        </td>
-
-        <td class="billing-time-cell">
-          ${this.formatOrderTime(order.timestamp)}
-        </td>
-
-        <td>
-          <button class="btn btn-secondary btn-xs" onclick="Billing.generateReceipt(${JSON.stringify(order.id)})">
-            Receipt
-          </button>
+        <td>${this.getBillingStatusBadge(billingStatus)}</td>
+        <td class="billing-time-cell">${this.formatOrderTime(order.timestamp)}</td>
+        <td style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-xs" onclick="Billing.openOrderDetails(${JSON.stringify(order.id)})">Details</button>
+          <button class="btn btn-secondary btn-xs" onclick="Billing.generateReceipt(${JSON.stringify(order.id)})">Receipt</button>
         </td>
       </tr>
     `;
@@ -138,9 +102,7 @@ const Billing = {
     if (!orders.length) {
       body.innerHTML = `
         <tr>
-          <td colspan="8" class="billing-empty-cell">
-            No orders found
-          </td>
+          <td colspan="8" class="billing-empty-cell">No orders found</td>
         </tr>
       `;
       return;
@@ -153,69 +115,162 @@ const Billing = {
     return this.getOrders().find((order) => String(order.id) === String(orderId));
   },
 
-  getOrderTypeLabel(order) {
-    return order.orderType === 'delivery' ? 'Home Delivery' : 'Dine-in';
+  // -----------------------
+  // Complete payment flow
+  // -----------------------
+  openCompletePaymentModal(orderId) {
+    const order = this.findOrder(orderId);
+    if (!order) return App.toast('Order not found', 'error');
+    if (!order.mongoId) return App.toast('Order is not synced yet', 'warning');
+    if ((order.billingStatus || 'pending') === 'completed') return App.toast('Already billed', 'info');
+
+    const online = this.isOnlineMethod(order.paymentMethod);
+    const storedTxn = (order.paymentTransactionId || '').trim();
+
+    const body = online
+      ? `
+        <div class="modal-stack">
+          <div class="panel-info">
+            <div><strong>Payment Method:</strong> ${App.safeText(order.paymentMethod)}</div>
+            <div><strong>Stored Transaction ID:</strong> <code>${App.safeText(storedTxn || '-')}</code></div>
+            <div class="text-soft" style="margin-top:6px">
+              Enter the customer's Transaction ID exactly. Billing completes only if it matches.
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Enter Transaction ID to Confirm</label>
+            <input class="form-input" id="confirmTxnId" placeholder="Transaction ID">
+          </div>
+        </div>
+      `
+      : `
+        <div class="modal-stack">
+          <div class="panel-muted">
+            <div><strong>Payment Method:</strong> ${App.safeText(order.paymentMethod || 'cash')}</div>
+            <div class="text-soft" style="margin-top:6px">No transaction verification required.</div>
+          </div>
+        </div>
+      `;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-success" id="confirmBillBtn" onclick="Billing.confirmCompletePayment(${JSON.stringify(order.id)})">
+        Complete Payment
+      </button>
+    `;
+
+    App.openModal('Complete Payment', body, footer);
   },
 
-  getDiscountPercent(order) {
-    return Number(order.discountPercent || 0);
-  },
-
-  getDiscountAmount(order) {
-    return Number(order.discount || 0);
-  },
-
-  async markBillingCompleted(orderId) {
-    const order = this.getOrders().find((entry) => String(entry.id) === String(orderId));
+  async confirmCompletePayment(orderId) {
+    const order = this.findOrder(orderId);
+    const btn = this.byId('confirmBillBtn');
     if (!order || !order.mongoId) return;
+
+    const online = this.isOnlineMethod(order.paymentMethod);
+    const enteredTxn = (this.byId('confirmTxnId')?.value || '').trim();
+
+    if (online && !enteredTxn) {
+      App.toast('Transaction ID is required', 'warning');
+      return;
+    }
+
+    App.setButtonLoading(btn, true, 'Saving...', 'Complete Payment');
 
     try {
       await Store.request(`/orders/${order.mongoId}/billing-status`, {
         method: 'PATCH',
-        body: JSON.stringify({ billingStatus: 'completed' })
+        body: JSON.stringify({
+          billingStatus: 'completed',
+          paymentTransactionId: online ? enteredTxn : ''
+        })
       });
 
       await Store.fetchOrders();
-    } catch (error) {
-      console.error('Failed to update billing status:', error);
-      App.toast(error.message || 'Failed to update billing status', 'error');
+      App.closeModal();
+      App.toast('Billing completed', 'success');
+      this.renderTable();
+    } catch (e) {
+      App.toast(e.message || 'Failed to complete billing', 'error');
+    } finally {
+      App.setButtonLoading(btn, false, 'Saving...', 'Complete Payment');
     }
   },
 
-  renderReceiptContactSection(order) {
-    if (order.orderType === 'delivery') {
-      return `
-        <div class="receipt-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-        <div class="receipt-row">
-          <span>Address</span>
-          <span class="receipt-multiline-value">${App.safeText(order.deliveryAddress || '-')}</span>
-        </div>
-      `;
-    }
+  // -----------------------
+  // Order details modal
+  // -----------------------
+  openOrderDetails(orderId) {
+    const order = this.findOrder(orderId);
+    if (!order) return App.toast('Order not found', 'error');
 
-    return `
-      <div class="receipt-row"><span>Table</span><span>${App.safeText(order.table || '-')}</span></div>
-      <div class="receipt-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-    `;
-  },
+    const online = this.isOnlineMethod(order.paymentMethod);
+    const txn = (order.paymentTransactionId || '').trim();
+    const billingStatus = order.billingStatus || 'pending';
 
-  renderReceiptItems(order) {
-    return (order.items || [])
-      .map(
-        (item) => `
-          <div class="receipt-row">
-            <span>${Number(item.qty || 0)}x ${App.safeText(item.name)}</span>
-            <span>${App.currency((item.price || 0) * (item.qty || 0))}</span>
+    const txnHtml = online
+      ? `<div class="summary-row"><span>Transaction ID</span><span style="max-width:220px;text-align:right">${App.safeText(txn || '-')}</span></div>`
+      : '';
+
+    const body = `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:1.05rem;font-weight:800">Order #${App.safeText(order.id)}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted)">${App.formatDateTime(order.timestamp)}</div>
           </div>
-        `
-      )
-      .join('');
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="badge ${billingStatus === 'completed' ? 'badge-success' : 'badge-warning'}">${App.safeText(billingStatus)}</span>
+            <span class="badge ${online ? 'badge-purple' : 'badge-accent'}">${App.safeText(order.paymentMethod || 'cash')}</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
+          <div class="summary-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Guest')}</span></div>
+          <div class="summary-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
+          ${
+            order.orderType === 'delivery'
+              ? `<div class="summary-row"><span>Address</span><span style="max-width:220px;text-align:right">${App.safeText(order.deliveryAddress || '-')}</span></div>`
+              : `<div class="summary-row"><span>Table</span><span>${App.safeText(order.table || '-')}</span></div>`
+          }
+          <div class="summary-row"><span>Payment</span><span>${App.safeText(order.paymentMethod || 'cash')}</span></div>
+          ${txnHtml}
+        </div>
+
+        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
+          <div class="summary-row"><span>Subtotal</span><span>${App.currency(order.subtotal || 0)}</span></div>
+          <div class="summary-row"><span>Tax</span><span>${App.currency(order.tax || 0)}</span></div>
+          <div class="summary-row"><span>Discount</span><span>-${App.currency(order.discount || 0)}</span></div>
+          <div class="summary-row total"><span>Total</span><span>${App.currency(order.total || 0)}</span></div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
+      ${
+        billingStatus !== 'completed'
+          ? `<button class="btn btn-success" onclick="Billing.openCompletePaymentModal(${JSON.stringify(order.id)})">Complete Payment</button>`
+          : ''
+      }
+      <button class="btn btn-primary" onclick="Billing.generateReceipt(${JSON.stringify(order.id)})">Open Receipt</button>
+    `;
+
+    App.openModal('Order Details', body, footer);
   },
 
+  // -----------------------
+  // Receipt (no auto-complete here; staff must use Complete Payment)
+  // -----------------------
   buildReceiptHTML(order) {
-    const orderTypeLabel = this.getOrderTypeLabel(order);
-    const discountPercent = this.getDiscountPercent(order);
-    const discountAmount = this.getDiscountAmount(order);
+    const discountPercent = Number(order.discountPercent || 0);
+    const discountAmount = Number(order.discount || 0);
+    const online = this.isOnlineMethod(order.paymentMethod);
+
+    const txnLine = online
+      ? `<div class="receipt-row"><span>Txn ID</span><span>${App.safeText(order.paymentTransactionId || '-')}</span></div>`
+      : '';
 
     return `
       <div class="receipt-preview" id="receiptPrint">
@@ -228,43 +283,52 @@ const Billing = {
         <hr class="receipt-divider">
 
         <div class="receipt-row"><span>Order #</span><span>${App.safeText(order.id)}</span></div>
-        <div class="receipt-row"><span>Type</span><span>${orderTypeLabel}</span></div>
+        <div class="receipt-row"><span>Type</span><span>${App.safeText(order.orderType || 'dine-in')}</span></div>
         <div class="receipt-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Guest')}</span></div>
 
-        ${this.renderReceiptContactSection(order)}
+        ${
+          order.orderType === 'delivery'
+            ? `
+              <div class="receipt-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
+              <div class="receipt-row"><span>Address</span><span class="receipt-multiline-value">${App.safeText(order.deliveryAddress || '-')}</span></div>
+            `
+            : `
+              <div class="receipt-row"><span>Table</span><span>${App.safeText(order.table || '-')}</span></div>
+              <div class="receipt-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
+            `
+        }
 
         <div class="receipt-row"><span>Payment</span><span>${App.safeText(order.paymentMethod || 'cash')}</span></div>
+        ${txnLine}
+
         <div class="receipt-row"><span>Date</span><span>${new Date(order.timestamp).toLocaleDateString()}</span></div>
         <div class="receipt-row"><span>Time</span><span>${new Date(order.timestamp).toLocaleTimeString()}</span></div>
 
         <hr class="receipt-divider">
 
         <div class="receipt-section-title">Items:</div>
-        ${this.renderReceiptItems(order)}
+        ${(order.items || []).map((item) => `
+          <div class="receipt-row">
+            <span>${Number(item.qty || 0)}x ${App.safeText(item.name)}</span>
+            <span>${App.currency((item.price || 0) * (item.qty || 0))}</span>
+          </div>
+        `).join('')}
 
         <hr class="receipt-divider">
 
-        <div class="receipt-row"><span>Subtotal</span><span>${App.currency(order.subtotal)}</span></div>
-        <div class="receipt-row"><span>Tax (${((window.APP_CONFIG?.TAX_RATE || 0.08) * 100).toFixed(0)}%)</span><span>${App.currency(order.tax)}</span></div>
+        <div class="receipt-row"><span>Subtotal</span><span>${App.currency(order.subtotal || 0)}</span></div>
+        <div class="receipt-row"><span>Tax</span><span>${App.currency(order.tax || 0)}</span></div>
         <div class="receipt-row"><span>Discount (${discountPercent}%)</span><span>-${App.currency(discountAmount)}</span></div>
 
         <hr class="receipt-divider">
 
-        <div class="receipt-row bold"><span>TOTAL</span><span>${App.currency(order.total)}</span></div>
+        <div class="receipt-row bold"><span>TOTAL</span><span>${App.currency(order.total || 0)}</span></div>
 
         <hr class="receipt-divider">
 
-        ${
-          order.offlineQueued
-            ? `<p class="receipt-footer receipt-warning">
-                This receipt is for an offline queued order and has not synced yet.
-              </p>`
-            : ''
-        }
-
         <p class="receipt-footer">
-          Thank you for ordering with us!<br>
-          Please visit again soon ❤️
+          Billing Status: <strong>${App.safeText(order.billingStatus || 'pending')}</strong><br>
+          Thank you for ordering with us!
         </p>
       </div>
     `;
@@ -272,189 +336,35 @@ const Billing = {
 
   generateReceipt(orderId) {
     const order = this.findOrder(orderId);
-    if (!order) {
-      App.toast('Order not found', 'error');
-      return;
-    }
+    if (!order) return App.toast('Order not found', 'error');
 
     this.currentOrder = order;
 
     const body = this.buildReceiptHTML(order);
-
     const footer = `
       <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
       <button class="btn btn-primary" onclick="Billing.printReceipt()">Print</button>
     `;
-
     App.openModal('Receipt', body, footer);
-  },
-
-  openOrderDetails(orderId) {
-    const order = this.findOrder(orderId);
-    if (!order) {
-      App.toast('Order not found', 'error');
-      return;
-    }
-
-    const discountPercent = this.getDiscountPercent(order);
-    const discountAmount = this.getDiscountAmount(order);
-    const typeLabel = order.orderType === 'delivery' ? 'Home Delivery' : 'Dine-in';
-    const billingStatus = order.billingStatus || 'pending';
-
-    const customerSection = order.orderType === 'delivery'
-      ? `
-        <div class="summary-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Guest')}</span></div>
-        <div class="summary-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-        <div class="summary-row"><span>Address</span><span style="max-width:220px;text-align:right">${App.safeText(order.deliveryAddress || '-')}</span></div>
-      `
-      : `
-        <div class="summary-row"><span>Customer</span><span>${App.safeText(order.customerName || 'Walk-in')}</span></div>
-        <div class="summary-row"><span>Table</span><span>${App.safeText(order.table || '-')}</span></div>
-        <div class="summary-row"><span>Phone</span><span>${App.safeText(order.customerPhone || '-')}</span></div>
-      `;
-
-    const body = `
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:1.05rem;font-weight:800">Order #${App.safeText(order.id)}</div>
-            <div style="font-size:0.8rem;color:var(--text-muted)">
-              ${App.formatDateTime(order.timestamp)}
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="badge ${order.orderType === 'delivery' ? 'badge-purple' : 'badge-accent'}">${typeLabel}</span>
-            <span class="badge ${billingStatus === 'completed' ? 'badge-success' : 'badge-warning'}">${billingStatus}</span>
-          </div>
-        </div>
-
-        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
-          ${customerSection}
-          <div class="summary-row"><span>Payment</span><span>${App.safeText(order.paymentMethod || 'cash')}</span></div>
-        </div>
-
-        <div>
-          <div style="font-size:0.9rem;font-weight:700;margin-bottom:10px">Items</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            ${(order.items || []).map((item) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-input);border-radius:var(--radius)">
-                <div>
-                  <div style="font-weight:600">${App.safeText(item.name)}</div>
-                  <div style="font-size:0.75rem;color:var(--text-muted)">Qty: ${item.qty}</div>
-                </div>
-                <div style="font-weight:700">${App.currency((item.price || 0) * (item.qty || 0))}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div style="background:var(--bg-input);padding:14px;border-radius:var(--radius)">
-          <div class="summary-row"><span>Subtotal</span><span>${App.currency(order.subtotal)}</span></div>
-          <div class="summary-row"><span>Tax</span><span>${App.currency(order.tax)}</span></div>
-          <div class="summary-row"><span>Discount (${discountPercent}%)</span><span>-${App.currency(discountAmount)}</span></div>
-          <div class="summary-row total"><span>Total</span><span>${App.currency(order.total)}</span></div>
-        </div>
-      </div>
-    `;
-
-    const footer = `
-      <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
-      <button class="btn btn-primary" onclick="Billing.generateReceipt(${JSON.stringify(order.id)})">Open Receipt</button>
-    `;
-
-    App.openModal('Order Details', body, footer);
   },
 
   async printReceipt() {
     const receipt = this.byId('receiptPrint');
-    if (!receipt) {
-      App.toast('Receipt not found', 'error');
-      return;
-    }
+    if (!receipt) return App.toast('Receipt not found', 'error');
 
     const printWindow = window.open('', '_blank', 'width=420,height=700');
-    if (!printWindow) {
-      App.toast('Unable to open print window', 'error');
-      return;
-    }
+    if (!printWindow) return App.toast('Unable to open print window', 'error');
 
     printWindow.document.write(`
-      <html>
-        <head>
-          <title>Receipt</title>
-          <style>
-            body {
-              font-family: 'Courier New', monospace;
-              padding: 20px;
-              max-width: 380px;
-              margin: 0 auto;
-            }
-            h2 {
-              text-align: center;
-              margin-bottom: 4px;
-            }
-            .receipt-sub {
-              text-align: center;
-              font-size: 0.75rem;
-              color: #666;
-              margin-bottom: 16px;
-            }
-            .receipt-divider {
-              border: none;
-              border-top: 1px dashed #ccc;
-              margin: 12px 0;
-            }
-            .receipt-row {
-              display: flex;
-              justify-content: space-between;
-              font-size: 0.82rem;
-              padding: 2px 0;
-              color: #333;
-              gap: 8px;
-            }
-            .receipt-row span:last-child {
-              text-align: right;
-            }
-            .receipt-row.bold {
-              font-weight: 700;
-              font-size: 0.95rem;
-              color: #111;
-            }
-            .receipt-footer {
-              text-align: center;
-              font-size: 0.72rem;
-              color: #999;
-              margin-top: 16px;
-            }
-            .receipt-warning {
-              color: #d97706;
-            }
-            .receipt-section-title {
-              font-weight: 700;
-              font-size: 0.82rem;
-              margin-bottom: 6px;
-              color: #111;
-            }
-            .receipt-multiline-value {
-              text-align: right;
-              max-width: 180px;
-            }
-          </style>
-        </head>
-        <body>${receipt.innerHTML}</body>
-      </html>
+      <html><head><title>Receipt</title></head><body>${receipt.innerHTML}</body></html>
     `);
 
     printWindow.document.close();
     printWindow.focus();
 
-    setTimeout(async () => {
+    setTimeout(() => {
       printWindow.print();
       printWindow.close();
-
-      if (this.currentOrder?.id) {
-        await this.markBillingCompleted(this.currentOrder.id);
-      }
     }, 300);
   },
 

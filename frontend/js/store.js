@@ -273,9 +273,8 @@ const Store = {
       total: order.total || 0,
       status: order.status || 'pending',
       billingStatus: order.billingStatus || 'pending',
-      billingCompletedAt: order.billingCompletedAt
-      ? new Date(order.billingCompletedAt).getTime()
-      : null,
+      paymentTransactionId: order.paymentTransactionId || '',
+      billingCompletedAt: order.billingCompletedAt ? new Date(order.billingCompletedAt).getTime(): null,
       prepStartedAt: order.prepStartedAt ? new Date(order.prepStartedAt).getTime() : null,
       estimatedPrepMinutes: order.estimatedPrepMinutes || null,
       estimatedReadyAt: order.estimatedReadyAt ? new Date(order.estimatedReadyAt).getTime() : null,

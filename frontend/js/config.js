@@ -8,5 +8,23 @@ window.APP_CONFIG = {
   TAX_RATE: 0.05,
   CURRENCY_SYMBOL: '৳',
   CURRENCY_CODE: 'BDT',
-  CURRENCY_NAME: 'Taka'
+  CURRENCY_NAME: 'Taka',
+
+  ONLINE_PAYMENTS: {
+    bKash: {
+      label: 'bKash',
+      merchantNumber: '01903048550',
+      qrImage: './qr/bkash.jpeg'
+    },
+    Nagad: {
+      label: 'Nagad',
+      merchantNumber: '01903048550',
+      qrImage: './qr/nagad.png'
+    },
+    Rocket: {
+      label: 'Rocket',
+      merchantNumber: '01903048550',
+      qrImage: './qr/rocket.png'
+    }
+  }
 };

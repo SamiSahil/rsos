@@ -5,9 +5,6 @@ const PublicHome = {
   searchText: '',
   reviewRating: 5,
 
-  // NEW: store recent tracking codes on device for convenience
-  trackingHistoryKey: 'restaurantos_tracking_history',
-
   render() {
     this.renderLayout();
     this.renderHero();
@@ -30,7 +27,6 @@ const PublicHome = {
     return Store.get('tables') || [];
   },
 
-  // keep (not used for tracking anymore; staff-only in secure mode)
   getOrders() {
     return Store.get('orders') || [];
   },
@@ -47,6 +43,180 @@ const PublicHome = {
     return window.APP_CONFIG?.TAX_RATE || 0.05;
   },
 
+  // ============================================================
+  // ONLINE PAYMENT HELPERS (Option 1 + Option 2)
+  // ============================================================
+  isOnlinePaymentMethod(method) {
+    return ['bKash', 'Nagad', 'Rocket'].includes(String(method || '').trim());
+  },
+
+  getPaymentMeta(method) {
+    const map = window.APP_CONFIG?.ONLINE_PAYMENTS || {};
+    return map[String(method || '').trim()] || null;
+  },
+
+  async copyText(text, msg = 'Copied') {
+    const value = String(text || '').trim();
+    if (!value) return App.toast('Nothing to copy', 'warning');
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      App.toast(msg, 'success');
+    } catch {
+      App.toast('Copy failed', 'error');
+    }
+  },
+
+  openQrPreview(method) {
+    const meta = this.getPaymentMeta(method);
+    if (!meta?.qrImage) return App.toast('QR not configured', 'warning');
+
+    const merchant = meta.merchantNumber || '-';
+
+    App.openModal(
+      `${App.safeText(method)} QR`,
+      `
+        <div class="modal-stack">
+          <div style="display:flex;justify-content:center">
+            <img src="${meta.qrImage}" alt="${App.safeText(method)} QR"
+              style="width:260px;height:260px;object-fit:cover;border-radius:16px;border:1px solid rgba(255,255,255,0.08)">
+          </div>
+
+          <div class="panel-muted">
+            <div style="font-weight:900;margin-bottom:6px">Merchant Number</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
+                ${App.safeText(merchant)}
+              </code>
+              <button class="btn btn-secondary btn-xs"
+                onclick="PublicHome.copyText(${JSON.stringify(merchant)}, 'Merchant number copied')">
+                Copy
+              </button>
+            </div>
+
+            <div class="text-soft" style="margin-top:8px">
+              If you cannot scan on this phone, use <strong>Send Money/Payment</strong> to this merchant number.
+            </div>
+          </div>
+
+          <div class="panel-info">
+            Tip: Some apps support <strong>Scan from Gallery</strong>. Save this QR and try scanning from gallery inside your payment app.
+          </div>
+        </div>
+      `,
+      `
+        <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
+        <button class="btn btn-primary" onclick="PublicHome.downloadQr(${JSON.stringify(method)})">Download QR</button>
+      `
+    );
+  },
+
+  downloadQr(method) {
+    const meta = this.getPaymentMeta(method);
+    if (!meta?.qrImage) return App.toast('QR not configured', 'warning');
+
+    const a = document.createElement('a');
+    a.href = meta.qrImage;
+    a.download = `${String(method || 'payment')}-qr`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    App.toast('QR download started (or opened by browser)', 'info');
+  },
+
+  renderOnlinePaymentBox(method, amount) {
+    const meta = this.getPaymentMeta(method);
+    const merchant = String(meta?.merchantNumber || '').trim();
+    const qr = String(meta?.qrImage || '').trim();
+
+    const merchantBlock = merchant
+      ? `
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <div class="text-soft">Merchant Number:</div>
+          <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
+            ${App.safeText(merchant)}
+          </code>
+          <button class="btn btn-secondary btn-xs"
+            onclick="PublicHome.copyText(${JSON.stringify(merchant)}, 'Merchant number copied')">
+            Copy
+          </button>
+        </div>
+      `
+      : `<div class="panel-warning" style="margin-top:10px">Merchant number is not configured.</div>`;
+
+    const qrBlock = qr
+      ? `
+        <div style="display:flex;justify-content:center;margin-top:10px">
+          <img
+            src="${qr}"
+            alt="${App.safeText(method)} QR"
+            onclick="PublicHome.openQrPreview(${JSON.stringify(method)})"
+            style="width:180px;height:180px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,0.08);cursor:pointer"
+          >
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-secondary btn-xs" onclick="PublicHome.openQrPreview(${JSON.stringify(method)})">Open QR</button>
+          <button class="btn btn-secondary btn-xs" onclick="PublicHome.downloadQr(${JSON.stringify(method)})">Download QR</button>
+        </div>
+
+        <div class="text-soft" style="text-align:center;margin-top:8px">
+          Tap QR to open. If your payment app supports it, try <strong>Scan from Gallery</strong>.
+        </div>
+      `
+      : `<div class="panel-warning" style="margin-top:10px">QR image is not configured.</div>`;
+
+    return `
+      <div id="publicOnlinePaymentBox" style="margin-top:12px">
+        <div class="panel-muted">
+          <div style="font-weight:900">Online Payment: ${App.safeText(method)}</div>
+          <div class="text-soft" style="margin-top:6px">
+            Amount to pay: <strong style="color:var(--accent)">${App.currency(amount)}</strong>
+          </div>
+
+          ${qrBlock}
+          ${merchantBlock}
+
+          <div class="panel-info" style="margin-top:12px">
+            If you cannot scan on this phone:
+            open <strong>${App.safeText(method)}</strong> → choose <strong>Send Money/Payment</strong> →
+            pay to the merchant number above → then come back and enter your Transaction ID.
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Transaction ID (required)</label>
+          <input class="form-input" id="publicTransactionId" placeholder="Enter transaction ID">
+        </div>
+      </div>
+    `;
+  },
+
+  togglePaymentMethodFields() {
+    const method = this.byId('publicPaymentMethod')?.value || 'cash';
+    const wrap = this.byId('publicOnlinePaymentWrap');
+    if (!wrap) return;
+
+    const { total } = this.getCartTotals();
+
+    if (!this.isOnlinePaymentMethod(method)) {
+      wrap.innerHTML = '';
+      return;
+    }
+
+    wrap.innerHTML = this.renderOnlinePaymentBox(method, total);
+  },
+
   // ---------- Search / Filter ----------
   syncSearchState() {
     const input = this.byId('publicMenuSearch');
@@ -59,7 +229,6 @@ const PublicHome = {
 
   getFilteredItems() {
     this.syncSearchState();
-
     let items = [...this.getMenuItems()];
 
     if (this.filterCategory !== 'All') {
@@ -91,19 +260,12 @@ const PublicHome = {
               <circle cx="11" cy="11" r="8"></circle>
               <path d="M21 21l-4.35-4.35"></path>
             </svg>
-            <input
-              type="text"
-              placeholder="Search dishes..."
-              id="publicMenuSearch"
-              oninput="PublicHome.filterMenu()"
-            >
+            <input type="text" placeholder="Search dishes..." id="publicMenuSearch" oninput="PublicHome.filterMenu()">
           </div>
-
           <div class="filter-chips" id="publicMenuFilterChips"></div>
         </div>
 
         <div class="menu-grid" id="publicMenuGrid"></div>
-
         <div id="publicReviewsSection"></div>
       </div>
     `;
@@ -166,7 +328,6 @@ const PublicHome = {
 
     const searchInput = this.byId('publicMenuSearch');
     if (searchInput) searchInput.value = this.searchText || '';
-
     this.updateCartBadge();
   },
 
@@ -177,10 +338,8 @@ const PublicHome = {
 
     container.innerHTML = this.getCategories()
       .map((category) => `
-        <div
-          class="filter-chip ${category === this.filterCategory ? 'active' : ''}"
-          onclick="PublicHome.setCategory('${App.escapeHTML(category)}', this)"
-        >
+        <div class="filter-chip ${category === this.filterCategory ? 'active' : ''}"
+             onclick="PublicHome.setCategory('${App.escapeHTML(category)}', this)">
           ${App.safeText(category)}
         </div>
       `)
@@ -189,13 +348,8 @@ const PublicHome = {
 
   setCategory(category, el) {
     this.filterCategory = category;
-
-    document
-      .querySelectorAll('#publicMenuFilterChips .filter-chip')
-      .forEach((chip) => chip.classList.remove('active'));
-
+    document.querySelectorAll('#publicMenuFilterChips .filter-chip').forEach((chip) => chip.classList.remove('active'));
     if (el) el.classList.add('active');
-
     this.renderMenuGrid();
   },
 
@@ -210,13 +364,8 @@ const PublicHome = {
     if (!grid) return;
 
     const items = this.getFilteredItems();
-
     if (!items.length) {
-      grid.innerHTML = `
-        <div class="empty-state" style="grid-column:1/-1">
-          <p>No menu items found</p>
-        </div>
-      `;
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>No menu items found</p></div>`;
       return;
     }
 
@@ -225,41 +374,21 @@ const PublicHome = {
 
   renderMenuCard(item) {
     const media = item.imageUrl
-      ? `
-        <img
-          src="${App.safeText(item.imageUrl, '')}"
-          alt="${App.safeText(item.name)}"
-          class="menu-item-image"
-        >
-      `
-      : `
-        <div class="menu-item-emoji-wrap">
-          ${App.safeText(item.emoji || '🍽️')}
-        </div>
-      `;
+      ? `<img src="${App.safeText(item.imageUrl, '')}" alt="${App.safeText(item.name)}" class="menu-item-image">`
+      : `<div class="menu-item-emoji-wrap">${App.safeText(item.emoji || '🍽️')}</div>`;
 
     return `
       <div class="menu-card public-menu-card">
-        <div class="menu-card-img menu-item-media">
-          ${media}
-        </div>
+        <div class="menu-card-img menu-item-media">${media}</div>
         <div class="menu-card-body">
           <h4>${App.safeText(item.name)}</h4>
           <div class="menu-category">${App.safeText(item.category)}</div>
-          <div class="menu-item-description">
-            ${App.safeText(item.description || '')}
-          </div>
+          <div class="menu-item-description">${App.safeText(item.description || '')}</div>
           <div class="menu-price">${App.currency(item.price)}</div>
         </div>
-
         <div class="menu-card-footer public-order-footer">
-          <button
-            type="button"
-            class="btn btn-primary btn-sm public-order-btn"
-            onclick="PublicHome.addToCart('${item.id}')"
-          >
-            Add to Cart
-          </button>
+          <button type="button" class="btn btn-primary btn-sm public-order-btn"
+                  onclick="PublicHome.addToCart('${item.id}')">Add to Cart</button>
         </div>
       </div>
     `;
@@ -271,9 +400,8 @@ const PublicHome = {
       'About RestaurantOS',
       `
         <div class="modal-stack">
-          <div class="panel-muted">Browse our menu and place orders for delivery or table dining.</div>
-          <div class="panel-muted">Add multiple dishes to your cart and place one complete order.</div>
-          <div class="panel-muted">Use your tracking code to view full details from any device.</div>
+          <div class="panel-muted">Online payments: scan QR if possible or pay manually to merchant number.</div>
+          <div class="panel-muted">Enter Transaction ID. Staff confirms and completes billing.</div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">Close</button>`
@@ -285,25 +413,9 @@ const PublicHome = {
     return this.cart.reduce((sum, item) => sum + item.qty, 0);
   },
 
-  getCartTotals() {
-    const taxRate = this.getTaxRate();
-    const subtotal = this.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const tax = subtotal * taxRate;
-
-    let discountPercent = this.getDiscountPercent();
-    if (discountPercent < 0) discountPercent = 0;
-    if (discountPercent > 100) discountPercent = 100;
-
-    const discount = subtotal * (discountPercent / 100);
-    const total = subtotal + tax - discount;
-
-    return { subtotal, tax, discountPercent, discount, total };
-  },
-
   updateCartBadge() {
     const badge = this.byId('publicCartBadge');
     if (!badge) return;
-
     const count = this.getCartCount();
     badge.textContent = count;
     badge.style.display = count > 0 ? 'inline-flex' : 'none';
@@ -316,10 +428,7 @@ const PublicHome = {
     const existing = this.cart.find((entry) => entry.menuId === menuId);
 
     if (existing) {
-      if (existing.qty >= item.stock) {
-        App.toast('Not enough stock available', 'warning');
-        return;
-      }
+      if (existing.qty >= item.stock) return App.toast('Not enough stock available', 'warning');
       existing.qty += 1;
     } else {
       this.cart.push({
@@ -336,6 +445,19 @@ const PublicHome = {
     App.toast(`${item.name} added to cart`, 'success');
   },
 
+  getCartTotals() {
+    const taxRate = this.getTaxRate();
+    const subtotal = this.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const tax = subtotal * taxRate;
+
+    let discountPercent = this.getDiscountPercent();
+    discountPercent = Math.max(0, Math.min(100, Number(discountPercent || 0)));
+
+    const discount = subtotal * (discountPercent / 100);
+    const total = subtotal + tax - discount;
+    return { subtotal, tax, discountPercent, discount, total };
+  },
+
   changeCartQty(menuId, delta) {
     const cartItem = this.cart.find((entry) => entry.menuId === menuId);
     if (!cartItem) return;
@@ -343,9 +465,8 @@ const PublicHome = {
     const menuItem = this.getMenuItems().find((entry) => entry.id === menuId);
     cartItem.qty += delta;
 
-    if (cartItem.qty <= 0) {
-      this.cart = this.cart.filter((entry) => entry.menuId !== menuId);
-    } else if (menuItem && cartItem.qty > menuItem.stock) {
+    if (cartItem.qty <= 0) this.cart = this.cart.filter((entry) => entry.menuId !== menuId);
+    else if (menuItem && cartItem.qty > menuItem.stock) {
       cartItem.qty = menuItem.stock;
       App.toast('Not enough stock available', 'warning');
     }
@@ -380,22 +501,12 @@ const PublicHome = {
 
   renderCartItem(item) {
     const media = item.imageUrl
-      ? `
-        <img
-          src="${App.safeText(item.imageUrl, '')}"
-          alt="${App.safeText(item.name)}"
-          class="public-cart-item-image"
-        >
-      `
-      : `
-        <span class="public-cart-item-emoji">${App.safeText(item.emoji || '🍽️')}</span>
-      `;
+      ? `<img src="${App.safeText(item.imageUrl, '')}" alt="${App.safeText(item.name)}" class="public-cart-item-image">`
+      : `<span class="public-cart-item-emoji">${App.safeText(item.emoji || '🍽️')}</span>`;
 
     return `
       <div class="public-cart-item">
-        <div class="public-cart-thumb">
-          ${media}
-        </div>
+        <div class="public-cart-thumb">${media}</div>
 
         <div class="public-cart-info">
           <div class="public-cart-name">${App.safeText(item.name)}</div>
@@ -446,9 +557,7 @@ const PublicHome = {
         <p class="cart-modal-subtitle">Review your selected dishes before placing your order.</p>
       </div>
 
-      <div class="public-cart-list">
-        ${cartHtml}
-      </div>
+      <div class="public-cart-list">${cartHtml}</div>
 
       <div class="cart-summary-box">
         <div class="summary-row"><span>Subtotal</span><span>${App.currency(subtotal)}</span></div>
@@ -482,15 +591,13 @@ const PublicHome = {
 
       <div class="form-group" id="tableSelectGroup" style="display:none">
         <label class="form-label">Choose Available Table</label>
-        <div class="public-table-picker">
-          ${tablesHtml}
-        </div>
+        <div class="public-table-picker">${tablesHtml}</div>
         <input type="hidden" id="publicTableSelect" value="">
       </div>
 
       <div class="form-group">
         <label class="form-label">Payment Method</label>
-        <select class="form-select" id="publicPaymentMethod">
+        <select class="form-select" id="publicPaymentMethod" onchange="PublicHome.togglePaymentMethodFields()">
           <option value="bKash">bKash</option>
           <option value="Nagad">Nagad</option>
           <option value="Rocket">Rocket</option>
@@ -498,6 +605,8 @@ const PublicHome = {
           <option value="cash">Cash</option>
         </select>
       </div>
+
+      <div id="publicOnlinePaymentWrap"></div>
     `;
 
     const footer = `
@@ -507,6 +616,7 @@ const PublicHome = {
 
     App.openModal('Place Your Order', body, footer);
     this.toggleOrderTypeFields();
+    this.togglePaymentMethodFields();
   },
 
   toggleOrderTypeFields() {
@@ -529,26 +639,20 @@ const PublicHome = {
     if (el) el.classList.add('selected');
   },
 
-  validateOrderForm({ orderType, customerPhone, deliveryAddress, tableId }) {
-    if (!customerPhone) {
-      App.toast('Phone number is required', 'warning');
-      return false;
-    }
+  validateOrderForm({ orderType, customerPhone, deliveryAddress, tableId, paymentMethod, transactionId }) {
+    if (!customerPhone) return App.toast('Phone number is required', 'warning'), false;
+    if (orderType === 'delivery' && !deliveryAddress) return App.toast('Delivery address is required', 'warning'), false;
+    if (orderType === 'dine-in' && !tableId) return App.toast('Please choose an available table', 'warning'), false;
 
-    if (orderType === 'delivery' && !deliveryAddress) {
-      App.toast('Delivery address is required', 'warning');
-      return false;
+    if (this.isOnlinePaymentMethod(paymentMethod)) {
+      if (!transactionId || String(transactionId).trim().length < 6) {
+        return App.toast('Transaction ID is required for online payment', 'warning'), false;
+      }
     }
-
-    if (orderType === 'dine-in' && !tableId) {
-      App.toast('Please choose an available table', 'warning');
-      return false;
-    }
-
     return true;
   },
 
-  buildOrderPayload({ orderType, customerName, customerPhone, deliveryAddress, paymentMethod, tableId }) {
+  buildOrderPayload({ orderType, customerName, customerPhone, deliveryAddress, paymentMethod, tableId, transactionId }) {
     const { subtotal, tax, discountPercent, discount, total } = this.getCartTotals();
 
     return {
@@ -557,6 +661,7 @@ const PublicHome = {
       customerPhone,
       deliveryAddress: orderType === 'delivery' ? deliveryAddress : '',
       paymentMethod,
+      paymentTransactionId: this.isOnlinePaymentMethod(paymentMethod) ? String(transactionId || '').trim() : '',
       tableId: orderType === 'dine-in' ? tableId : null,
       items: this.cart.map((item) => ({ menuId: item.menuId, qty: item.qty, price: item.price })),
       subtotal,
@@ -625,26 +730,20 @@ const PublicHome = {
       ? `Estimated completion time: <strong>${orderData.estimatedPrepMinutes} min</strong>`
       : `Your order is waiting for kitchen confirmation. Estimated completion time will appear once cooking starts.`;
 
+    const isOnline = this.isOnlinePaymentMethod(orderData.paymentMethod);
+
     App.openModal(
       `Order #${orderData.orderNumber} Placed`,
       `
         <div class="modal-stack">
           <div class="panel-muted"><strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}</div>
+          ${
+            isOnline
+              ? `<div class="panel-warning"><strong>Online payment:</strong> Staff will confirm your Transaction ID before completing billing.</div>`
+              : ''
+          }
           <div class="panel-info">${estimatedText}</div>
           <div class="panel-muted">Total: <strong>${App.currency(orderData.total || 0)}</strong></div>
-
-          <div class="panel-muted">
-            <div style="font-weight:900;margin-bottom:8px">Tracking Code (save this)</div>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-              <code style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:#fff;font-weight:900">
-                ${App.safeText(trackingCode || '-')}
-              </code>
-              <button class="btn btn-secondary btn-xs" onclick="PublicHome.copyTrackingCode(${JSON.stringify(trackingCode)})">Copy</button>
-            </div>
-            <div class="text-soft" style="margin-top:8px">
-              Use this tracking code to view full order details from any device.
-            </div>
-          </div>
         </div>
       `,
       `<button class="btn btn-primary" onclick="App.closeModal()">OK</button>`
@@ -802,10 +901,7 @@ const PublicHome = {
 
   // ---------- Submit order ----------
   async submitCartOrder() {
-    if (!this.cart.length) {
-      App.toast('Your cart is empty', 'warning');
-      return;
-    }
+    if (!this.cart.length) return App.toast('Your cart is empty', 'warning');
 
     const submitBtn = this.byId('publicSubmitOrderBtn');
 
@@ -814,10 +910,20 @@ const PublicHome = {
     const customerPhone = (this.byId('publicCustomerPhone')?.value || '').trim();
     const deliveryAddress = (this.byId('publicDeliveryAddress')?.value || '').trim();
     const paymentMethod = this.byId('publicPaymentMethod')?.value || 'cash';
+
+    // transaction ID field exists only for online methods (created dynamically)
+    const transactionId = (this.byId('publicTransactionId')?.value || '').trim();
     const tableId = this.byId('publicTableSelect')?.value || '';
 
-    const isValid = this.validateOrderForm({ orderType, customerPhone, deliveryAddress, tableId });
-    if (!isValid) return;
+    const ok = this.validateOrderForm({
+      orderType,
+      customerPhone,
+      deliveryAddress,
+      tableId,
+      paymentMethod,
+      transactionId
+    });
+    if (!ok) return;
 
     App.setButtonLoading(submitBtn, true, 'Placing...', 'Place Order');
 
@@ -828,7 +934,8 @@ const PublicHome = {
         customerPhone,
         deliveryAddress,
         paymentMethod,
-        tableId
+        tableId,
+        transactionId
       });
 
       const json = await Store.request('/orders', {
@@ -840,8 +947,6 @@ const PublicHome = {
       this.selectedTableId = '';
       this.updateCartBadge();
 
-      // IMPORTANT: do NOT fetch all orders publicly (security + your system now restricts this)
-      // Menu/tables are safe to refresh (and also sockets update stock/tables)
       await Store.fetchMenuItems();
       await Store.fetchTables();
 
@@ -858,7 +963,6 @@ const PublicHome = {
   // ============================================================
   // REVIEWS / FEEDBACK (unchanged)
   // ============================================================
-
   getTopReviews(limit = 3) {
     return [...this.getFeedback()]
       .sort((a, b) => {

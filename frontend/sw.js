@@ -1,4 +1,4 @@
-const CACHE_NAME = 'restaurantos-v6'; // change version when needed
+const CACHE_NAME = 'restaurantos-v10'; // change version when needed
 
 const STATIC_ASSETS = [
   './',
@@ -11,7 +11,9 @@ const STATIC_ASSETS = [
   './js/chartLib.js',
   './js/app.js',
   './js/main.js',
-
+  './qr/bkash.jpeg',
+  './qr/nagad.png',
+  './qr/rocket.png',
   './js/modules/profile.js',
   './js/modules/dashboard.js',
   './js/modules/menuEngine.js',
