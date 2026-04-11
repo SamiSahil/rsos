@@ -1,39 +1,22 @@
 const App = {
-  validPages: [
-    'home',
-    'dashboard',
-    'profile',
-    'menu',
-    'floor',
-    'pos',
-    'kitchen',
-    'inventory',
-    'analytics',
-    'billing',
-    'sync',
-    'staff'
-  ],
+ validPages: [
+  'home','dashboard','profile','menu','floor','pos','kitchen',
+  'inventory','analytics','billing','sync','staff',
+  'security'
+],
 
-  protectedPages: [
-    'dashboard',
-    'profile',
-    'menu',
-    'floor',
-    'pos',
-    'kitchen',
-    'inventory',
-    'analytics',
-    'billing',
-    'sync',
-    'staff'
-  ],
+ protectedPages: [
+  'dashboard','profile','menu','floor','pos','kitchen',
+  'inventory','analytics','billing','sync','staff',
+  'security'
+],
 
   // Role access rules (admin/manager can access all protected pages by default)
   // Others are restricted by these lists.
   pageRoles: {
     // Admin/Manager only
     staff: ['admin', 'manager'],
-
+    security: ['admin','manager'],
     // Cashier + Admin/Manager
     dashboard: ['admin', 'manager', 'cashier'],
     inventory: ['admin', 'manager', 'cashier'],
@@ -63,7 +46,9 @@ const App = {
     analytics: ['Analytics', 'Reports & customer feedback'],
     billing: ['Billing', 'Invoices & receipts'],
     sync: ['Sync Center', 'Offline queue & conflict management'],
-    staff: ['Staff Management', 'Manage staff, roles, status and records']
+    staff: ['Staff Management', 'Manage staff, roles, status and records'],
+    security: ['Security Logs', 'Audit logs & IP blocking'],
+
   },
 
   initCompleted: false,
@@ -287,7 +272,9 @@ if (page === 'analytics') {
 
       billing: async () => Billing.render(),
       sync: async () => SyncCenter.render(),
-      staff: async () => StaffPage.load()
+      staff: async () => StaffPage.load(),
+      security: async () => Security.render()
+
     };
 
     const renderFn = renderers[page];

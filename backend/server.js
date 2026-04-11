@@ -11,7 +11,10 @@ import { Server } from "socket.io";
 
 import connectDB from "./config/db.js";
 import { setIO } from "./config/socket.js";
-
+import securityRoutes from "./routes/securityRoutes.js";
+import { ipBlocker } from "./middleware/ipBlocker.js";
+import { autoBlocker } from "./middleware/autoBlocker.js";
+import { auditRequests } from "./middleware/auditMiddleware.js";
 import menuRoutes from "./routes/menuRoutes.js";
 import tableRoutes from "./routes/tableRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
@@ -67,8 +70,10 @@ io.on("connection", (socket) => {
     console.log(`❌ Socket disconnected: ${socket.id}`);
   });
 });
-
-// Security headers
+app.set("trust proxy", 1);
+app.use(ipBlocker);
+app.use(autoBlocker);
+app.use(auditRequests);
 app.use(
   helmet({
     crossOriginResourcePolicy: false
@@ -109,7 +114,7 @@ app.get("/", (req, res) => {
     message: "RestaurantOS API is running"
   });
 });
-
+app.use("/api/security", securityRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/orders", orderRoutes);
@@ -122,6 +127,7 @@ app.use("/api/payroll", payrollRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use(notFound);
 app.use(errorHandler);
+app.use(auditRequests);
 
 const PORT = process.env.PORT || 5000;
 

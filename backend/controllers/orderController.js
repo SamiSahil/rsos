@@ -3,6 +3,7 @@ import Order from "../models/Order.js";
 import Table from "../models/Table.js";
 import MenuItem from "../models/MenuItem.js";
 import { getIO } from "../config/socket.js";
+import { auditAction } from "../utils/audit.js";
 
 const STAFF_ROLES = ["admin", "manager", "cashier", "kitchen", "waiter"];
 
@@ -63,7 +64,7 @@ export const trackOrderPublic = async (req, res, next) => {
         deliveryAddress: order.deliveryAddress || "",
         paymentMethod: order.paymentMethod || "cash",
 
-        // ✅ include txn id (tracking code is secret)
+        // include txn id (tracking code is secret)
         paymentTransactionId: order.paymentTransactionId || "",
 
         tableNumber: order.table?.number || null,
@@ -178,7 +179,7 @@ export const createOrder = async (req, res, next) => {
       throw new Error("Table ID is required for dine-in orders");
     }
 
-    // ✅ Require txn id for online payments
+    // Require txn id for online payments
     if (onlineMethods.includes(paymentMethod)) {
       if (!safeTxnId || safeTxnId.length < 6) {
         res.status(400);
@@ -266,7 +267,7 @@ export const createOrder = async (req, res, next) => {
       deliveryAddress,
       paymentMethod,
 
-      // ✅ Save txn id for online payment methods
+      // Save txn id for online payment methods
       paymentTransactionId: onlineMethods.includes(paymentMethod) ? safeTxnId : "",
 
       items: finalItems,
@@ -283,6 +284,14 @@ export const createOrder = async (req, res, next) => {
       prepStartedAt: null,
       estimatedPrepMinutes: null,
       estimatedReadyAt: null
+    });
+
+    // ✅ Audit event
+    await auditAction(req, "order_created", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      orderType,
+      paymentMethod
     });
 
     if (table) {
@@ -355,6 +364,13 @@ export const updateOrderStatus = async (req, res, next) => {
 
     order.status = status;
     await order.save();
+
+    // ✅ Audit event
+    await auditAction(req, "order_status_updated", {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      newStatus: status
+    });
 
     let table = null;
     if (status === "completed" && order.table?._id) {
@@ -429,6 +445,12 @@ export const deleteOrder = async (req, res, next) => {
 
     await order.deleteOne();
 
+    // ✅ Audit event
+    await auditAction(req, "order_deleted", {
+      orderId: order._id,
+      orderNumber: order.orderNumber
+    });
+
     const io = getIO();
     emitToStaff(io, "order:deleted", { _id: req.params.id, orderNumber: order.orderNumber });
 
@@ -465,7 +487,7 @@ export const updateBillingStatus = async (req, res, next) => {
     const onlineMethods = ["bKash", "Nagad", "Rocket"];
     const isOnline = onlineMethods.includes(order.paymentMethod);
 
-    // ✅ Enforce match when completing billing for online payments
+    // Enforce match when completing billing for online payments
     if (billingStatus === "completed" && isOnline) {
       const entered = String(paymentTransactionId || "").trim();
       const stored = String(order.paymentTransactionId || "").trim();
@@ -486,7 +508,7 @@ export const updateBillingStatus = async (req, res, next) => {
 
     order.billingStatus = billingStatus;
 
-    // ✅ accounting timestamp (used by dashboard/analytics accounting revenue)
+    // accounting timestamp
     if (billingStatus === "completed") {
       order.billingCompletedAt = new Date();
     } else {
@@ -497,8 +519,15 @@ export const updateBillingStatus = async (req, res, next) => {
 
     const updatedOrder = await Order.findById(order._id).populate("table");
 
+    // ✅ Audit event
+    await auditAction(req, "billing_status_updated", {
+      orderId: updatedOrder._id,
+      orderNumber: updatedOrder.orderNumber,
+      billingStatus: updatedOrder.billingStatus
+    });
+
     const io = getIO();
-    // ✅ staff only (no public leak)
+    // staff only
     emitToStaff(io, "order:updated", updatedOrder);
 
     res.json({

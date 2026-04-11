@@ -8,23 +8,26 @@ import {
   updateBillingStatus,
   trackOrderPublic
 } from "../controllers/orderController.js";
+import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+
 router.get("/track/:trackingCode", trackOrderPublic);
 
+// staff-only
 router.route("/")
-  .get(getOrders)
-  .post(createOrder);
+  .get(protect, authorize("admin","manager","cashier","kitchen","waiter"), getOrders)
+  .post(createOrder); // keep public ordering allowed
 
 router.route("/:id")
-  .get(getOrderById)
-  .delete(deleteOrder);
+  .get(protect, authorize("admin","manager","cashier","kitchen","waiter"), getOrderById)
+  .delete(protect, authorize("admin","manager"), deleteOrder);
 
 router.route("/:id/status")
-  .patch(updateOrderStatus);
+  .patch(protect, authorize("admin","manager","kitchen","cashier"), updateOrderStatus);
 
 router.route("/:id/billing-status")
-  .patch(updateBillingStatus);
+  .patch(protect, authorize("admin","manager","cashier"), updateBillingStatus);
 
 export default router;

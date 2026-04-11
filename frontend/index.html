@@ -190,6 +190,17 @@
           Sync Center
           <span class="nav-badge" id="syncQueueBadge" style="display:none">0</span>
         </a>
+     <a class="nav-item" data-page="security" data-roles="admin,manager" href="#/security"
+   onclick="event.preventDefault(); App.navigate('security')">
+  <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path d="M12 3l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V7l8-4z"/>
+    <path d="M12 11v4"/>
+    <path d="M12 17h.01"/>
+  </svg>
+  Security Logs
+</a>
+
+
       </nav>
     </aside>
 
@@ -611,8 +622,12 @@
               </svg>
               Install on iPhone/iPad
             </button>
-          </div>
+          </div> 
+          
+   
         </div>
+        <div class="page-view" id="page-security"></div>
+
       </div>
 
       <!-- SCRIPTS -->
@@ -636,6 +651,7 @@
       <script src="js/modules/profile.js"></script>
 
       <script src="js/modules/syncCenter.js"></script>
+      <script src="js/modules/security.js"></script>
 
       <script src="js/app.js"></script>
       <script src="js/main.js"></script>
