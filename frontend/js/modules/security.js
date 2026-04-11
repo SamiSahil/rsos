@@ -13,6 +13,8 @@ const Security = {
     }
   },
 
+  _bound: false,
+
   byId(id) {
     return document.getElementById(id);
   },
@@ -20,6 +22,33 @@ const Security = {
   canAccess() {
     const u = Store.get('authUser');
     return u && (u.role === 'admin' || u.role === 'manager');
+  },
+
+  // ----------------------------
+  // Event delegation (NO inline onclick)
+  // ----------------------------
+  bindEvents() {
+    if (this._bound) return;
+    const root = this.byId('page-security');
+    if (!root) return;
+
+    root.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-sec-action]');
+      if (!btn) return;
+
+      const action = btn.getAttribute('data-sec-action');
+      const ip = btn.getAttribute('data-ip') || '';
+
+      if (action === 'refresh') return this.refresh();
+      if (action === 'apply') return this.applyFilters();
+      if (action === 'downloadCsv') return this.downloadCsv();
+      if (action === 'openBlockModal') return this.openBlockModal();
+      if (action === 'quickFilterIp') return this.quickFilterIp(ip);
+      if (action === 'prefillBlock') return this.openBlockModalPrefill(ip);
+      if (action === 'unblockPrompt') return this.unblockIP(ip);
+    });
+
+    this._bound = true;
   },
 
   // ----------------------------
@@ -40,9 +69,7 @@ const Security = {
   },
 
   async fetchTopAbuse(minutes = 60) {
-    const json = await Store.request(
-      `/security/top-abuse?minutes=${encodeURIComponent(minutes)}`
-    );
+    const json = await Store.request(`/security/top-abuse?minutes=${encodeURIComponent(minutes)}`);
     this.state.topAbuse = json.data || [];
   },
 
@@ -58,11 +85,7 @@ const Security = {
     this.renderSkeleton();
 
     try {
-      await Promise.all([
-        this.fetchLogs(),
-        this.fetchBlocked(),
-        this.fetchTopAbuse(60)
-      ]);
+      await Promise.all([this.fetchLogs(), this.fetchBlocked(), this.fetchTopAbuse(60)]);
       this.render();
     } catch (e) {
       App.toast(e.message || 'Failed to load security data', 'error');
@@ -84,6 +107,9 @@ const Security = {
   render() {
     const page = this.byId('page-security');
     if (!page) return;
+
+    // ensure event delegation is attached once
+    this.bindEvents();
 
     if (!this.canAccess()) {
       page.innerHTML = `<div class="empty-state"><p>Access denied</p></div>`;
@@ -117,10 +143,10 @@ const Security = {
             `).join('')}
           </select>
 
-          <button class="btn btn-secondary" onclick="Security.applyFilters()">Apply</button>
-          <button class="btn btn-primary" onclick="Security.refresh()">Refresh</button>
-          <button class="btn btn-secondary" onclick="Security.downloadCsv()">Download CSV</button>
-          <button class="btn btn-danger" onclick="Security.openBlockModal()">Block IP</button>
+          <button class="btn btn-secondary" data-sec-action="apply">Apply</button>
+          <button class="btn btn-primary" data-sec-action="refresh">Refresh</button>
+          <button class="btn btn-secondary" data-sec-action="downloadCsv">Download CSV</button>
+          <button class="btn btn-danger" data-sec-action="openBlockModal">Block IP</button>
         </div>
       </div>
 
@@ -173,7 +199,6 @@ const Security = {
       </div>
     `;
 
-    // Auto-load once when first opened
     if (!this.state.logs.length && !this.state.loading) {
       this.refresh();
     }
@@ -181,51 +206,52 @@ const Security = {
 
   renderTopAbuse() {
     const list = this.state.topAbuse || [];
-
-    if (!list.length) {
-      return `<div class="panel-muted">No abusive activity detected</div>`;
-    }
+    if (!list.length) return `<div class="panel-muted">No abusive activity detected</div>`;
 
     return `
       <div class="modal-stack" style="gap:10px">
-        ${list.map((x) => `
-          <div class="panel-muted" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
-            <div>
-              <div style="font-weight:900">${App.safeText(x._id || '-')}</div>
-              <div class="text-soft">
-                Total: <strong>${Number(x.total || 0)}</strong> |
-                Bad (401/403/429): <strong style="color:var(--warning)">${Number(x.bad || 0)}</strong>
+        ${list.map((x) => {
+          const ip = String(x._id || '');
+          return `
+            <div class="panel-muted" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:900">${App.safeText(ip || '-')}</div>
+                <div class="text-soft">
+                  Total: <strong>${Number(x.total || 0)}</strong> |
+                  Bad (401/403/429): <strong style="color:var(--warning)">${Number(x.bad || 0)}</strong>
+                </div>
+                <div class="text-soft">Last seen: ${x.lastAt ? new Date(x.lastAt).toLocaleString() : '-'}</div>
               </div>
-              <div class="text-soft">Last seen: ${x.lastAt ? new Date(x.lastAt).toLocaleString() : '-'}</div>
-            </div>
 
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-secondary btn-xs" onclick="Security.quickFilterIp(${JSON.stringify(x._id || '')})">View Logs</button>
-              <button class="btn btn-danger btn-xs" onclick="Security.openBlockModalPrefill(${JSON.stringify(x._id || '')})">Block</button>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-xs" data-sec-action="quickFilterIp" data-ip="${App.escapeHTML(ip)}">View Logs</button>
+                <button class="btn btn-danger btn-xs" data-sec-action="prefillBlock" data-ip="${App.escapeHTML(ip)}">Block</button>
+              </div>
             </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
   },
 
   renderBlockedList() {
-    if (!this.state.blocked.length) {
-      return `<div class="panel-muted">No blocked IPs</div>`;
-    }
+    if (!this.state.blocked.length) return `<div class="panel-muted">No blocked IPs</div>`;
 
     return `
       <div class="modal-stack" style="gap:10px">
-        ${this.state.blocked.map((b) => `
-          <div class="panel-muted" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
-            <div>
-              <div style="font-weight:900">${App.safeText(b.ip)}</div>
-              <div class="text-soft">${b.reason ? `Reason: ${App.safeText(b.reason)}` : 'No reason'}</div>
-              <div class="text-soft">Blocked at: ${b.blockedAt ? new Date(b.blockedAt).toLocaleString() : '-'}</div>
+        ${this.state.blocked.map((b) => {
+          const ip = String(b.ip || '');
+          return `
+            <div class="panel-muted" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:900">${App.safeText(ip)}</div>
+                <div class="text-soft">${b.reason ? `Reason: ${App.safeText(b.reason)}` : 'No reason'}</div>
+                <div class="text-soft">Blocked at: ${b.blockedAt ? new Date(b.blockedAt).toLocaleString() : '-'}</div>
+              </div>
+              <button class="btn btn-secondary btn-xs" data-sec-action="unblockPrompt" data-ip="${App.escapeHTML(ip)}">Unblock</button>
             </div>
-            <button class="btn btn-secondary btn-xs" onclick="Security.unblockIP(${JSON.stringify(b.ip)})">Unblock</button>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
   },
@@ -237,14 +263,12 @@ const Security = {
 
     const badge = (statusCode) => {
       const s = Number(statusCode || 0);
-      const cls =
-        s >= 500 ? 'badge-danger'
-        : s >= 400 ? 'badge-warning'
-        : 'badge-success';
+      const cls = s >= 500 ? 'badge-danger' : s >= 400 ? 'badge-warning' : 'badge-success';
       return `<span class="badge ${cls}">${App.safeText(String(s || ''))}</span>`;
     };
 
     return this.state.logs.map((l) => {
+      const ip = String(l.ip || '');
       const staff = l.staffId ? `${l.staffRole || 'staff'}` : '—';
       const action = l.action || '—';
       const ua = (l.userAgent || '').slice(0, 45);
@@ -253,8 +277,8 @@ const Security = {
         <tr>
           <td>${l.at ? new Date(l.at).toLocaleString() : '-'}</td>
           <td>
-            <button class="btn btn-secondary btn-xs" onclick="Security.quickFilterIp(${JSON.stringify(l.ip || '')})">
-              ${App.safeText(l.ip || '-')}
+            <button class="btn btn-secondary btn-xs" data-sec-action="quickFilterIp" data-ip="${App.escapeHTML(ip)}">
+              ${App.safeText(ip || '-')}
             </button>
           </td>
           <td>${App.safeText(l.method || '-')}</td>
@@ -277,7 +301,6 @@ const Security = {
     this.state.filters.statusCode = (this.byId('secFilterStatus')?.value || '').trim();
     this.state.filters.path = (this.byId('secFilterPath')?.value || '').trim();
     this.state.filters.limit = Number(this.byId('secLimit')?.value || 200);
-
     this.refresh();
   },
 
@@ -343,7 +366,7 @@ const Security = {
     }
   },
 
-  async unblockIP(ip) {
+  unblockIP(ip) {
     if (!ip) return;
 
     App.openModal(
@@ -377,17 +400,7 @@ const Security = {
       return;
     }
 
-    const header = [
-      'at',
-      'ip',
-      'method',
-      'path',
-      'statusCode',
-      'staffId',
-      'staffRole',
-      'action',
-      'userAgent'
-    ];
+    const header = ['at', 'ip', 'method', 'path', 'statusCode', 'staffId', 'staffRole', 'action', 'userAgent'];
 
     const escape = (v) => {
       const s = String(v ?? '');
