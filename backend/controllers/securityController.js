@@ -81,7 +81,6 @@ export const unblockIP = async (req, res, next) => {
   }
 };
 
-// ✅ NEW: Top abusive IPs endpoint
 export const getTopAbusiveIPs = async (req, res, next) => {
   try {
     const minutes = Math.min(Math.max(Number(req.query.minutes) || 60, 5), 24 * 60);
@@ -89,6 +88,7 @@ export const getTopAbusiveIPs = async (req, res, next) => {
 
     const data = await AuditLog.aggregate([
       { $match: { at: { $gte: since }, path: { $regex: "^/api" } } },
+      { $sort: { at: -1 } },
       {
         $group: {
           _id: "$ip",
@@ -98,9 +98,13 @@ export const getTopAbusiveIPs = async (req, res, next) => {
               $cond: [{ $in: ["$statusCode", [401, 403, 429]] }, 1, 0]
             }
           },
-          lastAt: { $max: "$at" }
+          lastAt: { $first: "$at" },
+          lastUserAgent: { $first: "$userAgent" },
+          lastPath: { $first: "$path" },
+          lastStatusCode: { $first: "$statusCode" }
         }
       },
+
       { $sort: { bad: -1, total: -1 } },
       { $limit: 10 }
     ]);

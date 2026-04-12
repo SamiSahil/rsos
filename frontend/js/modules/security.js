@@ -222,7 +222,9 @@ const Security = {
                 </div>
                 <div class="text-soft">Last seen: ${x.lastAt ? new Date(x.lastAt).toLocaleString() : '-'}</div>
               </div>
-
+              <div class="text-soft">
+  Device: <strong>${App.safeText(this.deviceLabelFromUA(x.lastUserAgent || ""))}</strong>
+</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn btn-secondary btn-xs" data-sec-action="quickFilterIp" data-ip="${App.escapeHTML(ip)}">View Logs</button>
                 <button class="btn btn-danger btn-xs" data-sec-action="prefillBlock" data-ip="${App.escapeHTML(ip)}">Block</button>
@@ -233,6 +235,29 @@ const Security = {
       </div>
     `;
   },
+
+deviceLabelFromUA(ua = "") {
+  const s = String(ua || "").toLowerCase();
+  if (!s) return "Unknown";
+
+  // bots/scanners
+  if (/(bot|crawl|spider|slurp|scanner|monitor|uptime)/i.test(s)) {
+    return "Bot/Scanner";
+  }
+
+  const isTablet = /(ipad|tablet)/i.test(s);
+  const isMobile = !isTablet && /(iphone|ipod|android|mobile)/i.test(s);
+
+  let os = "";
+  if (/android/i.test(s)) os = "Android";
+  else if (/(iphone|ipad|ipod)/i.test(s)) os = "iOS";
+  else if (/windows nt/i.test(s)) os = "Windows";
+  else if (/(macintosh|mac os x)/i.test(s)) os = "macOS";
+  else if (/linux/i.test(s)) os = "Linux";
+
+  const device = isTablet ? "Tablet" : isMobile ? "Mobile" : "Desktop";
+  return os ? `${device} (${os})` : device;
+},
 
   renderBlockedList() {
     if (!this.state.blocked.length) return `<div class="panel-muted">No blocked IPs</div>`;
