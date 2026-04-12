@@ -366,29 +366,46 @@ const Security = {
     }
   },
 
-  unblockIP(ip) {
-    if (!ip) return;
+  // store the ip temporarily for the modal action
+_pendingUnblockIp: null,
 
-    App.openModal(
-      'Unblock IP',
-      `<p class="text-muted">Unblock <strong>${App.safeText(ip)}</strong>?</p>`,
-      `
-        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="Security.confirmUnblockIP(${JSON.stringify(ip)})">Unblock</button>
-      `
-    );
-  },
+unblockIP(ip) {
+  if (!ip) return;
 
-  async confirmUnblockIP(ip) {
-    try {
-      await Store.request(`/security/block-ip/${encodeURIComponent(ip)}`, { method: 'DELETE' });
-      App.closeModal();
-      App.toast('IP unblocked', 'success');
-      await this.refresh();
-    } catch (e) {
-      App.toast(e.message || 'Failed to unblock IP', 'error');
-    }
-  },
+  this._pendingUnblockIp = ip;
+
+  App.openModal(
+    'Unblock IP',
+    `<p class="text-muted">Unblock <strong>${App.safeText(ip)}</strong>?</p>`,
+    `
+      <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirmUnblockBtn" onclick="Security.confirmUnblockIP()">Unblock</button>
+    `
+  );
+},
+
+async confirmUnblockIP() {
+  const ip = this._pendingUnblockIp;
+  if (!ip) {
+    App.toast('No IP selected to unblock', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('confirmUnblockBtn');
+  App.setButtonLoading(btn, true, 'Unblocking...', 'Unblock');
+
+  try {
+    await Store.request(`/security/block-ip/${encodeURIComponent(ip)}`, { method: 'DELETE' });
+    App.closeModal();
+    App.toast('IP unblocked', 'success');
+    this._pendingUnblockIp = null;
+    await this.refresh();
+  } catch (e) {
+    App.toast(e.message || 'Failed to unblock IP', 'error');
+  } finally {
+    App.setButtonLoading(btn, false, 'Unblocking...', 'Unblock');
+  }
+},
 
   // ----------------------------
   // CSV Export

@@ -14,6 +14,8 @@ const Store = {
     cart: [],
     feedback: [],
     staff: [],
+    topItems: [], // ✅ NEW: public best-selling items
+
     currentPage: 'home',
     selectedTable: null,
     authUser: null,
@@ -50,9 +52,9 @@ const Store = {
     const tasks = [
       this.fetchMenuItems(),
       this.fetchTables(),
-      // public fetch of feedback (hidden excluded unless includeHidden is used)
       this.fetchFeedback(false),
-      this.fetchSettings()
+      this.fetchSettings(),
+      this.fetchTopItemsPublic(10, 30) // ✅ NEW: best-selling items for public home
     ];
 
     // Staff-only: load orders only when authenticated
@@ -188,8 +190,6 @@ const Store = {
       this.setSocketConnected(false);
     });
 
-    // Staff-only events should not be emitted to public by backend anymore.
-    // Keeping listeners is fine; public won't receive them.
     this.socket.on('order:new', (order) => {
       console.log('📥 order:new', order);
       this.upsertOrder(order);
@@ -274,7 +274,7 @@ const Store = {
       status: order.status || 'pending',
       billingStatus: order.billingStatus || 'pending',
       paymentTransactionId: order.paymentTransactionId || '',
-      billingCompletedAt: order.billingCompletedAt ? new Date(order.billingCompletedAt).getTime(): null,
+      billingCompletedAt: order.billingCompletedAt ? new Date(order.billingCompletedAt).getTime() : null,
       prepStartedAt: order.prepStartedAt ? new Date(order.prepStartedAt).getTime() : null,
       estimatedPrepMinutes: order.estimatedPrepMinutes || null,
       estimatedReadyAt: order.estimatedReadyAt ? new Date(order.estimatedReadyAt).getTime() : null,
@@ -516,11 +516,12 @@ const Store = {
           ...(options.headers || {})
         };
 
-const response = await fetch(url, {
-  ...options,
-  headers,
-  cache: 'no-store'
-});
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          cache: 'no-store'
+        });
+
         const json = await response.json().catch(() => ({}));
 
         if (!response.ok || json.success === false) {
@@ -548,23 +549,16 @@ const response = await fetch(url, {
       body: JSON.stringify({ email, password })
     });
 
-    // Set token
     this.setToken(json.data.token);
-
-    // Set minimal user quickly (contains role)
     this.setAuthUser(json.data);
 
-    // Reconnect socket to join correct role room
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
     this.connectSocket();
 
-    // IMPORTANT: load full staff record for profile (photoUrl, salary, workingDays, etc.)
     await this.fetchMe();
-
-    // Load staff-only data now
     await this.fetchOrders();
 
     return this.get('authUser');
@@ -611,5 +605,11 @@ const response = await fetch(url, {
     const backendFeedback = (json.data || []).map((f) => this.mapFeedback(f));
     const localQueuedFeedback = this._state.feedback.filter((f) => f.offlineQueued);
     this.set('feedback', [...localQueuedFeedback, ...backendFeedback]);
+  },
+
+  // ✅ NEW: Public best-selling items
+  async fetchTopItemsPublic(limit = 10, days = 30) {
+    const json = await this.request(`/analytics/top-items?limit=${encodeURIComponent(limit)}&days=${encodeURIComponent(days)}`);
+    this.set('topItems', json.data || []);
   }
 };

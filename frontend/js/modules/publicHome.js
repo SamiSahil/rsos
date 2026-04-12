@@ -5,15 +5,17 @@ const PublicHome = {
   searchText: '',
   reviewRating: 5,
 
-  // ✅ missing in your pasted file but used by tracking methods
   trackingHistoryKey: 'restaurantos_tracking_history',
 
-  // internal handler ref for event delegation
   _paymentHandler: null,
 
+  // ----------------------------
+  // Main render
+  // ----------------------------
   render() {
     this.renderLayout();
-    this.renderHero();
+    this.renderTopBarBadges();
+    this.renderFeatured();
     this.renderFilters();
     this.renderMenuGrid();
     this.renderReviewsSection();
@@ -41,12 +43,205 @@ const PublicHome = {
     return Store.get('feedback') || [];
   },
 
+  getTopItems() {
+    return Store.get('topItems') || [];
+  },
+
   getDiscountPercent() {
     return Store.getDiscountPercent ? Store.getDiscountPercent() : 0;
   },
 
   getTaxRate() {
     return window.APP_CONFIG?.TAX_RATE || 0.05;
+  },
+
+  // ============================================================
+  // HERO + FEATURED (Best Selling)
+  // ============================================================
+  renderLayout() {
+    const page = this.byId('page-home');
+    if (!page) return;
+
+    const discountPercent = this.getDiscountPercent();
+
+    page.innerHTML = `
+      <section class="lp" id="publicLanding">
+        <header class="lp__nav">
+          <div class="lp__brand">
+            <span class="lp__logo">RestOS</span>
+          </div>
+
+          <nav class="lp__links">
+            <a href="#home" onclick="event.preventDefault(); window.scrollTo({top:0,behavior:'smooth'})">Home</a>
+            <a href="#menu" onclick="event.preventDefault(); document.getElementById('menu').scrollIntoView({behavior:'smooth'})">Menu</a>
+            <a href="#reviews" onclick="event.preventDefault(); document.getElementById('reviews').scrollIntoView({behavior:'smooth'})">Reviews</a>
+            <a href="#about" onclick="event.preventDefault(); PublicHome.showAbout()">About</a>
+          </nav>
+
+          <div class="lp__actions">
+            <button class="lp__iconBtn" type="button" aria-label="Cart" onclick="PublicHome.openCartModal()">
+              🛒
+              <span class="lp__badge" id="lpCartBadge" style="display:none">0</span>
+            </button>
+            <button class="lp__ctaBtn" type="button" onclick="App.openLoginModal()">Staff Login</button>
+          </div>
+        </header>
+
+        <div class="lp__hero">
+          <div class="lp__heroLeft">
+            <div class="lp__kicker">
+              Fresh food • Fast service
+              ${discountPercent > 0 ? `<span class="lp__discount">-${discountPercent}% Discount Available</span>` : ``}
+            </div>
+
+            <h1 class="lp__title">It’s not just Food, It’s an Experience.</h1>
+
+            <div class="lp__ctaRow">
+              <button class="lp__primary" type="button"
+                onclick="document.getElementById('menu').scrollIntoView({behavior:'smooth'})">
+                View Menu
+              </button>
+              <button class="lp__secondary" type="button" onclick="PublicHome.openCartModal()">
+                Book A Table
+              </button>
+              <button class="lp__ghost" type="button" onclick="PublicHome.openTrackOrderModal()">
+                Track Order
+              </button>
+            </div>
+
+            <div class="lp__reviews">
+              
+              <div class="lp__reviewsMeta">Order & pay easily with bKash/Nagad/Rocket</div>
+            </div>
+          </div>
+
+          <div class="lp__heroRight">
+            <div class="lp__dishWrap">
+              <img
+                class="lp__dish"
+                src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=1470&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+                alt="Dish"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="lp__featured">
+          <div class="lp__featuredHeader">
+            <h3>Best Selling</h3>
+            <div class="lp__featuredControls">
+              <button class="lp__arrow" type="button" onclick="PublicHome.scrollFeatured(-1)">←</button>
+              <button class="lp__arrow" type="button" onclick="PublicHome.scrollFeatured(1)">→</button>
+            </div>
+          </div>
+
+          <div class="lp__cards" id="featuredRow"></div>
+        </div>
+      </section>
+
+      <!-- Menu section anchor -->
+      <div id="menu" style="height:1px"></div>
+
+      <section class="lp lp--content">
+        <div class="public-menu-controls">
+          <div class="search-input public-search-wrap">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="M21 21l-4.35-4.35"></path>
+            </svg>
+            <input type="text" placeholder="Search dishes..." id="publicMenuSearch" oninput="PublicHome.filterMenu()">
+          </div>
+          <div class="filter-chips" id="publicMenuFilterChips"></div>
+        </div>
+
+        <div class="menu-grid" id="publicMenuGrid"></div>
+
+        <div id="reviews" style="height:1px"></div>
+        <div id="publicReviewsSection"></div>
+      </section>
+    `;
+  },
+
+  renderTopBarBadges() {
+    this.updateCartBadge();
+  },
+
+  scrollFeatured(dir) {
+    const row = document.getElementById('featuredRow');
+    if (!row) return;
+    row.scrollBy({ left: dir * 320, behavior: 'smooth' });
+  },
+
+  // Map Store.topItems => MenuItem objects
+  getBestSellingMenuItems(limit = 10) {
+    const top = this.getTopItems();
+    const menu = this.getMenuItems();
+
+    const mapped = (top || [])
+      .map((t) => {
+        const item = menu.find((m) => String(m.id) === String(t.menuItemId));
+        if (!item) return null;
+        return {
+          ...item,
+          soldQty: Number(t.qty || 0),
+          soldRevenue: Number(t.revenue || 0)
+        };
+      })
+      .filter(Boolean);
+
+    if (mapped.length) return mapped.slice(0, limit);
+
+    return [...menu]
+      .filter((x) => (x.stock ?? 0) > 0)
+      .slice(0, limit);
+  },
+
+  renderFeaturedCard(item) {
+    const img = item.imageUrl
+      ? `<img class="lp__cardImg" src="${App.safeText(item.imageUrl, '')}" alt="${App.safeText(item.name)}">`
+      : `<div class="lp__cardImg lp__cardImgFallback">${App.safeText(item.emoji || '🍽️')}</div>`;
+
+    const out = (item.stock ?? 0) <= 0;
+
+    const soldLine =
+      item.soldQty != null
+        ? `<div class="lp__cardSub">Sold: <strong>${Number(item.soldQty)}</strong></div>`
+        : `<div class="lp__cardSub">${App.safeText(item.category || '')}</div>`;
+
+    return `
+      <article class="lp__card">
+        ${img}
+        <div class="lp__cardBody">
+          <div class="lp__cardTitle">${App.safeText(item.name)}</div>
+          ${soldLine}
+
+          <div class="lp__cardBottom">
+            <span class="lp__price">${App.currency(item.price || 0)}</span>
+            <button
+              class="lp__miniCart"
+              type="button"
+              ${out ? 'disabled style="opacity:0.45;cursor:not-allowed"' : ''}
+              onclick="PublicHome.addToCart('${item.id}')"
+              title="${out ? 'Out of stock' : 'Add to cart'}"
+            >+</button>
+          </div>
+        </div>
+      </article>
+    `;
+  },
+
+  renderFeatured() {
+    const row = document.getElementById('featuredRow');
+    if (!row) return;
+
+    const items = this.getBestSellingMenuItems(10);
+
+    if (!items.length) {
+      row.innerHTML = `<div class="panel-muted">No items to show</div>`;
+      return;
+    }
+
+    row.innerHTML = items.map((it) => this.renderFeaturedCard(it)).join('');
   },
 
   // ============================================================
@@ -82,12 +277,10 @@ const PublicHome = {
     }
   },
 
-  // ✅ Event delegation for modal content (fixes your console SyntaxError)
   bindPaymentActions() {
-    const root = document.getElementById('modalBody'); // App.openModal injects here
+    const root = document.getElementById('modalBody');
     if (!root) return;
 
-    // remove old handler if exists to avoid double events
     if (this._paymentHandler) {
       root.removeEventListener('click', this._paymentHandler);
     }
@@ -124,7 +317,6 @@ const PublicHome = {
 
     const merchant = String(meta.merchantNumber || '-').trim();
 
-    // ✅ Use data-attributes + event delegation (no inline JS injection)
     App.openModal(
       `${App.safeText(method)} QR`,
       `
@@ -167,7 +359,6 @@ const PublicHome = {
       `
     );
 
-    // ✅ bind after opening modal
     this.bindPaymentActions();
   },
 
@@ -268,12 +459,12 @@ const PublicHome = {
     }
 
     wrap.innerHTML = this.renderOnlinePaymentBox(method, total);
-
-    // ✅ Important: bind after injecting dynamic HTML
     this.bindPaymentActions();
   },
 
-  // ---------- Search / Filter ----------
+  // ============================================================
+  // Menu Search/Filters/Grid
+  // ============================================================
   syncSearchState() {
     const input = this.byId('publicMenuSearch');
     this.searchText = (input?.value || '').trim().toLowerCase();
@@ -301,93 +492,6 @@ const PublicHome = {
     return items;
   },
 
-  // ---------- Layout ----------
-  renderLayout() {
-    const page = this.byId('page-home');
-    if (!page) return;
-
-    page.innerHTML = `
-      <div class="public-home-wrap">
-        <div class="public-hero" id="publicHero"></div>
-
-        <div class="public-menu-controls">
-          <div class="search-input public-search-wrap">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="M21 21l-4.35-4.35"></path>
-            </svg>
-            <input type="text" placeholder="Search dishes..." id="publicMenuSearch" oninput="PublicHome.filterMenu()">
-          </div>
-          <div class="filter-chips" id="publicMenuFilterChips"></div>
-        </div>
-
-        <div class="menu-grid" id="publicMenuGrid"></div>
-        <div id="publicReviewsSection"></div>
-      </div>
-    `;
-  },
-
-  renderHero() {
-    const hero = this.byId('publicHero');
-    if (!hero) return;
-
-    const discountPercent = this.getDiscountPercent();
-
-    hero.innerHTML = `
-      <div class="public-hero-banner">
-        <div class="public-brand">
-          <div class="public-brand-logo">RsOs</div>
-          <div>
-            <h1>RestOS</h1>
-            <p>Fresh food. Fast ordering. Beautiful dining.</p>
-            ${
-              discountPercent > 0
-                ? `<div class="public-discount-banner">Special Offer: ${discountPercent}% discount on all orders!</div>`
-                : ''
-            }
-          </div>
-        </div>
-
-        <div class="public-hero-actions">
-          <button class="btn-icon" title="About / Info" onclick="PublicHome.showAbout()">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M18 20V10M12 20V4M6 20v-6"></path>
-            </svg>
-          </button>
-
-          <button class="btn-icon public-cart-btn" title="Cart" onclick="PublicHome.openCartModal()">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <circle cx="9" cy="21" r="1"></circle>
-              <circle cx="20" cy="21" r="1"></circle>
-              <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"></path>
-            </svg>
-            <span class="public-cart-badge" id="publicCartBadge" style="display:none">0</span>
-          </button>
-
-          <button class="btn-icon" title="Track Order" onclick="PublicHome.openTrackOrderModal()">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M3 3h18v18H3z"></path>
-              <path d="M9 9h6v6H9z"></path>
-            </svg>
-          </button>
-
-          <button class="btn-icon" title="Staff Login" onclick="App.openLoginModal()">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"></path>
-              <polyline points="10 17 15 12 10 7"></polyline>
-              <line x1="15" y1="12" x2="3" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-    `;
-
-    const searchInput = this.byId('publicMenuSearch');
-    if (searchInput) searchInput.value = this.searchText || '';
-    this.updateCartBadge();
-  },
-
-  // ---------- Filters ----------
   renderFilters() {
     const container = this.byId('publicMenuFilterChips');
     if (!container) return;
@@ -414,7 +518,6 @@ const PublicHome = {
     this.renderMenuGrid();
   },
 
-  // ---------- Menu grid ----------
   renderMenuGrid() {
     const grid = this.byId('publicMenuGrid');
     if (!grid) return;
@@ -428,53 +531,108 @@ const PublicHome = {
     grid.innerHTML = items.map((item) => this.renderMenuCard(item)).join('');
   },
 
-  renderMenuCard(item) {
-    const media = item.imageUrl
-      ? `<img src="${App.safeText(item.imageUrl, '')}" alt="${App.safeText(item.name)}" class="menu-item-image">`
-      : `<div class="menu-item-emoji-wrap">${App.safeText(item.emoji || '🍽️')}</div>`;
+ renderMenuCard(item) {
+  const img = item.imageUrl
+    ? `<img class="lp__cardImg" src="${App.safeText(item.imageUrl, '')}" alt="${App.safeText(item.name)}">`
+    : `<div class="lp__cardImg lp__cardImgFallback">${App.safeText(item.emoji || '🍽️')}</div>`;
 
-    return `
-      <div class="menu-card public-menu-card">
-        <div class="menu-card-img menu-item-media">${media}</div>
-        <div class="menu-card-body">
-          <h4>${App.safeText(item.name)}</h4>
-          <div class="menu-category">${App.safeText(item.category)}</div>
-          <div class="menu-item-description">${App.safeText(item.description || '')}</div>
-          <div class="menu-price">${App.currency(item.price)}</div>
+  const out = (item.stock ?? 0) <= 0;
+
+  const desc = (item.description || '').trim();
+  const shortDesc = desc.length > 70 ? desc.slice(0, 70) + '...' : desc;
+
+  return `
+    <article class="lp__card lp__menuCard">
+      ${img}
+      <div class="lp__cardBody">
+        <div class="lp__cardTitle">${App.safeText(item.name)}</div>
+
+        <div class="lp__cardSub lp__desc">
+          ${App.safeText(shortDesc || '—')}
         </div>
-        <div class="menu-card-footer public-order-footer">
-          <button type="button" class="btn btn-primary btn-sm public-order-btn"
-                  onclick="PublicHome.addToCart('${item.id}')">Add to Cart</button>
+
+        <div class="lp__cardBottom">
+          <span class="lp__price">${App.currency(item.price || 0)}</span>
+          <button
+            class="lp__miniCart"
+            type="button"
+            ${out ? 'disabled style="opacity:0.45;cursor:not-allowed"' : ''}
+            onclick="PublicHome.addToCart('${item.id}')"
+            title="${out ? 'Out of stock' : 'Add to cart'}"
+          >+</button>
         </div>
       </div>
-    `;
-  },
+    </article>
+  `;
+},
 
   // ---------- About ----------
-  showAbout() {
-    App.openModal(
-      'About RestaurantOS',
-      `
-        <div class="modal-stack">
-          <div class="panel-muted">Online payments: scan QR if possible or pay manually to merchant number.</div>
-          <div class="panel-muted">Enter Transaction ID. Staff confirms and completes billing.</div>
-        </div>
-      `,
-      `<button class="btn btn-primary" onclick="App.closeModal()">Close</button>`
-    );
-  },
+ showAbout() {
+  const phone = '+880 1903048550';
+  const address = 'Uttara, Food City, Dhaka-1230';
 
-  // ---------- Cart ----------
+  App.openModal(
+    'About RestaurantOS',
+    `
+      <div class="modal-stack">
+
+        <div class="panel-muted">
+          <strong>Restaurant</strong><br>
+          RestOS<br>
+          <span class="text-soft">${App.safeText(address)}</span>
+        </div>
+
+        <div class="panel-muted">
+          <strong>Contact</strong><br>
+          Phone: <strong>${App.safeText(phone)}</strong>
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn btn-secondary btn-sm" href="tel:${phone.replace(/\s+/g,'')}" style="text-decoration:none">Call Now</a>
+            <a class="btn btn-secondary btn-sm" href="https://wa.me/${phone.replace(/[^\d]/g,'')}" target="_blank" style="text-decoration:none">WhatsApp</a>
+          </div>
+        </div>
+
+        <div class="panel-info">
+          <strong>Track your order</strong><br>
+          Use your tracking code after placing an order to see live status.
+          <div style="margin-top:10px">
+            <button class="btn btn-primary btn-sm" onclick="App.closeModal(); PublicHome.openTrackOrderModal();">
+              Track Order
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-muted">
+          <strong>Online payment instructions</strong><br>
+          Scan QR if possible or pay manually to merchant number. Then enter your <strong>Transaction ID</strong>.
+          Staff will verify and complete billing.
+        </div>
+
+        <div class="panel-muted">
+          <strong>Support</strong><br>
+          For order issues (wrong item / late delivery), please contact us with your order number or tracking code.
+        </div>
+
+      </div>
+    `,
+    `<button class="btn btn-primary" onclick="App.closeModal()">Close</button>`
+  );
+},
+
+  // ============================================================
+  // Cart
+  // ============================================================
   getCartCount() {
     return this.cart.reduce((sum, item) => sum + item.qty, 0);
   },
 
   updateCartBadge() {
-    const badge = this.byId('publicCartBadge');
-    if (!badge) return;
     const count = this.getCartCount();
-    badge.textContent = count;
-    badge.style.display = count > 0 ? 'inline-flex' : 'none';
+
+    const heroBadge = document.getElementById('lpCartBadge');
+    if (heroBadge) {
+      heroBadge.textContent = count;
+      heroBadge.style.display = count > 0 ? 'inline-flex' : 'none';
+    }
   },
 
   addToCart(menuId) {
@@ -591,6 +749,9 @@ const PublicHome = {
     `;
   },
 
+  // ============================================================
+  // Cart Modal / Order flow
+  // ============================================================
   openCartModal(reopen = false) {
     if (!this.cart.length) {
       if (!reopen) App.toast('Your cart is empty', 'info');
@@ -672,14 +833,11 @@ const PublicHome = {
 
     App.openModal('Place Your Order', body, footer);
 
-    // ✅ bind after modal open
     this.bindPaymentActions();
-
     this.toggleOrderTypeFields();
     this.togglePaymentMethodFields();
   },
-
-  toggleOrderTypeFields() {
+    toggleOrderTypeFields() {
     const type = this.byId('publicOrderType');
     const deliveryGroup = this.byId('deliveryAddressGroup');
     const tableGroup = this.byId('tableSelectGroup');
@@ -776,11 +934,9 @@ const PublicHome = {
     }
   },
 
- // ---------- NEW: Show tracking code after placing order ----------
   showOrderPlacedModal(orderData) {
     const trackingCode = orderData?.trackingCode || '';
 
-    // Save tracking code for customer convenience
     this.addTrackingToHistory({
       trackingCode,
       orderNumber: orderData?.orderNumber
@@ -792,7 +948,6 @@ const PublicHome = {
 
     const isOnline = this.isOnlinePaymentMethod(orderData.paymentMethod);
 
-    // ✅ FIX: Create the tracking code box safely with a Copy button
     const trackingHtml = trackingCode
       ? `
         <div class="panel-muted" style="display:flex; justify-content:space-between; align-items:center; gap:12px; border: 1px dashed var(--accent);">
@@ -802,7 +957,6 @@ const PublicHome = {
               ${App.safeText(trackingCode)}
             </strong>
           </div>
-          <!-- JSON.stringify ensures the string is safely wrapped in quotes to prevent SyntaxErrors -->
           <button class="btn btn-secondary btn-xs" style="flex-shrink:0;" onclick='PublicHome.copyTrackingCode(${JSON.stringify(trackingCode)})'>
             Copy
           </button>
@@ -815,17 +969,13 @@ const PublicHome = {
       `
         <div class="modal-stack">
           ${trackingHtml}
-          
           <div class="panel-muted"><strong>Status:</strong> ${App.safeText(orderData.status || 'pending')}</div>
-          
           ${
             isOnline
               ? `<div class="panel-warning"><strong>Online payment:</strong> Staff will confirm your Transaction ID before completing billing.</div>`
               : ''
           }
-          
           <div class="panel-info">${estimatedText}</div>
-          
           <div class="panel-muted" style="font-size: 1.1rem;">
             Total: <strong>${App.currency(orderData.total || 0)}</strong>
           </div>
@@ -983,7 +1133,6 @@ const PublicHome = {
     }, 300);
   },
 
-  // ---------- Submit order ----------
   async submitCartOrder() {
     if (!this.cart.length) return App.toast('Your cart is empty', 'warning');
 

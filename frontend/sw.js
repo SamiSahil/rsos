@@ -1,4 +1,4 @@
-const CACHE_NAME = 'restaurantos-v10'; // change version when needed
+const CACHE_NAME = 'restaurantos-v12'; // change version when needed
 
 const STATIC_ASSETS = [
   './',
