@@ -55,6 +55,49 @@ const PublicHome = {
     return window.APP_CONFIG?.TAX_RATE || 0.05;
   },
 
+openMobileNav() {
+  const body = `
+    <div class="modal-stack">
+      <button class="btn btn-secondary" onclick="PublicHome.scrollToTopFromNav()">Home</button>
+      <button class="btn btn-secondary" onclick="PublicHome.scrollToSectionFromNav('menu')">Menu</button>
+      <button class="btn btn-secondary" onclick="PublicHome.scrollToSectionFromNav('reviews')">Reviews</button>
+      <button class="btn btn-secondary" onclick="PublicHome.openAboutFromNav()">About</button>
+
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:6px 0">
+
+      <!-- ✅ Staff login in same color -->
+      <button class="lp__ctaBtn lp__ctaBtn--menu" type="button" onclick="PublicHome.openStaffLoginFromNav()">
+        Staff Login
+      </button>
+    </div>
+  `;
+
+  App.openModal('Menu', body, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
+},
+
+openStaffLoginFromNav() {
+  App.closeModal();
+  // small delay so modal transitions don't clash
+  setTimeout(() => App.openLoginModal(), 50);
+},
+
+scrollToTopFromNav() {
+  App.closeModal();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+},
+
+scrollToSectionFromNav(id) {
+  App.closeModal();
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth' });
+},
+
+openAboutFromNav() {
+  App.closeModal();
+  // reuse your existing About modal
+  setTimeout(() => PublicHome.showAbout(), 50);
+},
+
   // ============================================================
   // HERO + FEATURED (Best Selling)
   // ============================================================
@@ -84,6 +127,9 @@ const PublicHome = {
               <span class="lp__badge" id="lpCartBadge" style="display:none">0</span>
             </button>
             <button class="lp__ctaBtn" type="button" onclick="App.openLoginModal()">Staff Login</button>
+             <button class="lp__hamburger" type="button" aria-label="Menu" onclick="PublicHome.openMobileNav()">
+    ☰
+  </button>
           </div>
         </header>
 
