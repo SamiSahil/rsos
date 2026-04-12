@@ -4,10 +4,10 @@
 #app:not(.is-authenticated) .sidebar-nav .nav-section-label:not(.public-only-nav),
 #app:not(.is-authenticated) .sidebar-nav .nav-item:not(.public-only-nav) {
   display: none !important;
-}#app:not(.is-authenticated) #notificationBtn {
+}
+#app:not(.is-authenticated) #notificationBtn {
   display: none !important;
 }
-
 
 :root {
   --accent: #E85D24;
@@ -1002,7 +1002,7 @@ pre {
 }
 
 /* ============================================================
-   PUBLIC HOME / CUSTOMER PAGE
+   STAFF AUTH & PROFILE
    ============================================================ */
 
 .staff-auth-chip {
@@ -1182,12 +1182,14 @@ pre {
   border-color: rgba(232, 93, 36, 0.3);
   color: var(--accent);
 }
+
 .staff-payroll-cell { display:flex; flex-direction:column; gap:4px; }
 .staff-payroll-topline { display:flex; justify-content:space-between; gap:10px; align-items:center; }
 .staff-payroll-amount { font-weight: 900; color: var(--text-primary); }
 .staff-payroll-meta { font-size:0.78rem; color: var(--text-muted); line-height:1.35; }
 .staff-actions { display:flex; flex-wrap:wrap; gap:6px; }
 .staff-attendance-month { display:inline-flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
 .staff-att-badge {
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -1198,8 +1200,6 @@ pre {
   color: var(--text-secondary);
 }
 .staff-att-badge strong { color: var(--text-primary); }
-
-/* ---------------- Profile Upgrade ---------------- */
 
 .profile-layout { display:flex; flex-direction:column; gap:16px; }
 
@@ -1332,7 +1332,6 @@ pre {
 .profile-payment-right { text-align:right; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
 .profile-payment-amount { font-weight: 900; color: var(--accent); }
 
-
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1367,6 +1366,10 @@ pre {
   color: var(--text-muted);
   text-transform: capitalize;
 }
+
+/* ============================================================
+   PUBLIC HOME / CUSTOMER PAGE
+   ============================================================ */
 
 .public-home-wrap {
   display: flex;
@@ -1453,26 +1456,15 @@ pre {
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-}
-
-/* Public menu controls: align search + chips nicely */
-.public-menu-controls{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap: 14px;
-  flex-wrap: wrap;
   margin: 14px 0 18px;
 }
 
-/* Search bar sizing */
-.public-menu-controls .public-search-wrap{
+.public-menu-controls .public-search-wrap {
   flex: 1;
   min-width: 260px;
   max-width: 420px;
 }
 
-/* Chips stay on one line and scroll on small screens */
 #publicMenuFilterChips{
   display:flex;
   align-items:center;
@@ -1484,30 +1476,10 @@ pre {
   padding-bottom: 4px;
 }
 
-/* nicer scrollbar (optional) */
 #publicMenuFilterChips::-webkit-scrollbar{ height: 6px; }
 #publicMenuFilterChips::-webkit-scrollbar-thumb{
   background: rgba(255,255,255,0.12);
   border-radius: 999px;
-}
-
-/* On small screens: stack search above chips */
-@media (max-width: 700px){
-  .public-menu-controls{
-    align-items: stretch;
-  }
-  .public-menu-controls .public-search-wrap{
-    max-width: none;
-    width: 100%;
-  }
-  #publicMenuFilterChips{
-    justify-content: flex-start;
-    width: 100%;
-  }
-}
-
-.public-search-wrap {
-  max-width: 420px;
 }
 
 .public-menu-card {
@@ -1562,6 +1534,7 @@ pre {
   visibility: visible !important;
   opacity: 1 !important;
 }
+
 .public-cart-btn {
   position: relative;
 }
@@ -1734,38 +1707,6 @@ pre {
   font-weight: 700;
 }
 
-.pos-discount-row {
-  align-items: center;
-}
-
-.pos-discount-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 8px;
-  min-width: 90px;
-  justify-content: flex-end;
-}
-
-.pos-discount-input {
-  width: 55px;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-align: right;
-}
-
-.pos-discount-percent {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 700;
-}
 /* Public mode layout */
 #app.public-mode {
   grid-template-columns: 1fr;
