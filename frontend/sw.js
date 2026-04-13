@@ -26,6 +26,7 @@ const STATIC_ASSETS = [
   './js/modules/billing.js',
   './js/modules/staff.js',
   './js/modules/syncCenter.js',
+  './js/modules/security.js',
 
   './icons/icon-192.png',
   './icons/icon-512.png',

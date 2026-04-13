@@ -227,16 +227,22 @@ if (page === 'analytics') {
     });
   },
 
-  updateVisiblePage(page) {
-    document.querySelectorAll('.page-view').forEach((view) => {
-      view.classList.toggle('active', view.id === `page-${page}`);
-    });
+ updateVisiblePage(page) {
+  document.querySelectorAll('.page-view').forEach((view) => {
+    view.classList.toggle('active', view.id === `page-${page}`);
+  });
 
-    const app = this.byId('app');
-    if (app) {
-      app.classList.toggle('public-mode', page === 'home');
-    }
-  },
+  const app = this.byId('app');
+  const isPublic = page === 'home';
+
+  if (app) {
+    app.classList.toggle('public-mode', isPublic);
+  }
+
+  // ✅ NEW: theme switch (affects modals/toasts too)
+  document.body.classList.toggle('public-theme', isPublic);
+  document.body.classList.toggle('staff-theme', !isPublic);
+},
 
   updatePageMeta(page) {
     const titleEl = this.byId('pageTitle');
