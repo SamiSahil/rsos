@@ -1,3 +1,5 @@
+const isElectron = /electron/i.test(navigator.userAgent) || window.location.protocol === 'file:';
+
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOMContentLoaded fired');
 
@@ -20,7 +22,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  if ('serviceWorker' in navigator) {
+if (!isElectron && 'serviceWorker' in navigator) {
+
+  if (isElectron && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister());
+  });
+  if (window.caches?.keys) {
+    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+  }
+}
     console.log('Service worker supported');
 
     try {

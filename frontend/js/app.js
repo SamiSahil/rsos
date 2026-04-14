@@ -247,7 +247,34 @@ if (page === 'analytics') {
   // ✅ NEW: theme switch (affects modals/toasts too)
   document.body.classList.toggle('public-theme', isPublic);
   document.body.classList.toggle('staff-theme', !isPublic);
+  this.applyShellMode(isPublic);
+
 },
+
+applyShellMode(isPublic) {
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const topbar = document.querySelector('.topbar');
+  const mainContent = document.querySelector('.main-content');
+  const pageContainer = document.querySelector('.page-container');
+
+  // Hard-hide in public mode (Home)
+  if (sidebar) sidebar.style.display = isPublic ? 'none' : '';
+  if (sidebarOverlay) sidebarOverlay.style.display = isPublic ? 'none' : '';
+  if (topbar) topbar.style.display = isPublic ? 'none' : '';
+
+  // Expand content full width
+  if (mainContent) {
+    mainContent.style.marginLeft = isPublic ? '0' : '';
+    mainContent.style.width = isPublic ? '100%' : '';
+  }
+
+  // Remove padding so landing page is full-bleed
+  if (pageContainer) {
+    pageContainer.style.padding = isPublic ? '0' : '';
+  }
+},
+
 
   updatePageMeta(page) {
     const titleEl = this.byId('pageTitle');
