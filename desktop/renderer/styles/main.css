@@ -1,6 +1,24 @@
-/* ============================================================
-   AUTH VISIBILITY RULES
-   ============================================================ */
+#app.public-mode .sidebar,
+#app.public-mode .topbar,
+#app.public-mode .sidebar-overlay {
+  display: none !important;
+}
+
+/* Make content full width when sidebar is hidden */
+#app.public-mode .main-content {
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+/* Remove staff padding so landing page looks correct */
+#app.public-mode .page-container {
+  padding: 0 !important;
+}
+
+/* Optional: make sure home page itself has no extra padding */
+#app.public-mode #page-home {
+  padding: 0 !important;
+}
 #app:not(.is-authenticated) .sidebar-nav .nav-section-label:not(.public-only-nav),
 #app:not(.is-authenticated) .sidebar-nav .nav-item:not(.public-only-nav) {
   display: none !important;
