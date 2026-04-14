@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('DOMContentLoaded fired');
-
+console.log('DOMContentLoaded fired');
+await App.init();
 // ✅ remove startup loader AFTER App.init finishes
 document.body.classList.remove('app-loading');
 document.getElementById('appLoader')?.remove();
