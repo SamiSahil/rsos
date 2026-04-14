@@ -80,14 +80,12 @@ app.use(
   })
 );
 
-// Compression
 app.use(compression());
 
-// CORS
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow tools/postman/server-to-server
+      if (!origin) return callback(null, true); 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -97,11 +95,9 @@ app.use(
   })
 );
 
-// Body parsing
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
-// Rate limit all API routes
 app.use("/api", apiLimiter);
 
 if (process.env.NODE_ENV === "development") {
