@@ -1,26 +1,4 @@
 
-#app.public-mode .sidebar,
-#app.public-mode .topbar,
-#app.public-mode .sidebar-overlay {
-  display: none !important;
-}
-
-/* Make content full width when sidebar is hidden */
-#app.public-mode .main-content {
-  margin-left: 0 !important;
-  width: 100% !important;
-}
-
-/* Remove staff padding so landing page looks correct */
-#app.public-mode .page-container {
-  padding: 0 !important;
-}
-
-/* Optional: make sure home page itself has no extra padding */
-#app.public-mode #page-home {
-  padding: 0 !important;
-}
-
 #app:not(.is-authenticated) .sidebar-nav .nav-section-label:not(.public-only-nav),
 #app:not(.is-authenticated) .sidebar-nav .nav-item:not(.public-only-nav) {
   display: none !important;
@@ -1439,25 +1417,6 @@ pre {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 3px;
-}
-
-/* Public mode layout */
-#app.public-mode { grid-template-columns: 1fr; }
-#app.public-mode .sidebar { display: none; }
-#app.public-mode .main-content { width: 100%; }
-
-#app.public-mode .topbar {
-  background: rgba(24, 26, 32, 0.85);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-
-#app.public-mode .topbar-left h2 { font-size: 1.05rem; }
-
-#app.public-mode .topbar-left .breadcrumb {
-  color: var(--text-secondary);
 }
 
 #app.is-authenticated .public-only-nav {
@@ -3088,6 +3047,8 @@ pre {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
+}
+
 @media (max-width: 520px){
   #app.public-mode .page-container{
     padding: 12px;
@@ -3132,8 +3093,6 @@ pre {
     height: 34px;
     border-radius: 10px;
   }
-}
-
 /* ✅ Staff login button inside hamburger modal */
 .lp__ctaBtn--menu{
   width: 100%;
@@ -3403,3 +3362,27 @@ body.staff-theme .public-order-btn{
   }
 }
 
+/* ============================================================
+   PUBLIC HOME — FINAL OVERRIDES (KEEP THIS AT VERY END)
+   This guarantees no sidebar/topbar on home (public mode).
+   ============================================================ */
+
+#app.public-mode {
+  grid-template-columns: 1fr !important;
+}
+
+#app.public-mode .sidebar,
+#app.public-mode .sidebar-overlay,
+#app.public-mode .topbar {
+  display: none !important;
+}
+
+#app.public-mode .main-content {
+  width: 100% !important;
+  margin-left: 0 !important;
+}
+
+#app.public-mode .page-container,
+#app.public-mode #page-home {
+  padding: 0 !important;
+}
