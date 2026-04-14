@@ -12,7 +12,7 @@ function createWindow() {
     webPreferences: { contextIsolation: true }
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+win.loadURL("https://rsos.netlify.app");
 }
 
 app.whenReady().then(createWindow);
