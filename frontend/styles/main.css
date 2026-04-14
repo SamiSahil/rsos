@@ -3386,3 +3386,62 @@ body.staff-theme .public-order-btn{
 #app.public-mode #page-home {
   padding: 0 !important;
 }
+
+/* ============================================================
+   APP LOADER (prevents sidebar flash before App.init completes)
+   ============================================================ */
+
+body.app-loading #app {
+  display: none !important; /* hide the whole shell until ready */
+}
+
+body.app-loading .app-loader {
+  display: flex;
+}
+
+.app-loader {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary);
+  z-index: 99999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.app-loader-card {
+  width: min(420px, 92vw);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 26px;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+
+.app-loader-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-light));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.app-loader-title {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+
+.app-loader-sub {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

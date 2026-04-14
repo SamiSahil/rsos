@@ -23,8 +23,8 @@
   <meta name="msapplication-TileColor" content="#E85D24" />
   <meta name="msapplication-config" content="./browserconfig.xml" />
 </head>
-<body>
-  <!-- TOAST CONTAINER -->
+<body class="app-loading public-theme">
+    <!-- TOAST CONTAINER -->
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- SIDEBAR OVERLAY -->
@@ -63,8 +63,17 @@
   </div>
 
   <!-- APP -->
-  <div id="app">
-    <!-- SIDEBAR -->
+<!-- APP LOADER (prevents sidebar flash before App.init completes) -->
+<div id="appLoader" class="app-loader">
+  <div class="app-loader-card">
+    <div class="app-loader-logo">Rs</div>
+    <div class="app-loader-title">RestOS</div>
+    <div class="app-loader-sub">Loading...</div>
+  </div>
+</div>
+
+<div id="app" class="public-mode">
+      <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <div class="logo">RsOs</div>

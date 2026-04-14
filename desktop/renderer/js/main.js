@@ -1,10 +1,9 @@
-const isElectron = /electron/i.test(navigator.userAgent) || window.location.protocol === 'file:';
-
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOMContentLoaded fired');
 
-  await App.init();
-
+// ✅ remove startup loader AFTER App.init finishes
+document.body.classList.remove('app-loading');
+document.getElementById('appLoader')?.remove();
   setupNetworkIndicator();
   setupInstallExperience();
 
@@ -22,16 +21,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-if (!isElectron && 'serviceWorker' in navigator) {
+const isElectron = /electron/i.test(navigator.userAgent) || window.location.protocol === 'file:';
 
-  if (isElectron && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => {
-    regs.forEach((r) => r.unregister());
-  });
-  if (window.caches?.keys) {
-    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
-  }
-}
+if (isElectron && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+  if (window.caches?.keys) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+} else if ('serviceWorker' in navigator) {
+  
     console.log('Service worker supported');
 
     try {
