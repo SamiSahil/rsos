@@ -3,3 +3,19 @@
 p.py
 rsos_code_bundle.txt
 explain.txt
+
+# node
+**/node_modules/
+**/dist/
+**/.cache/
+
+# env secrets
+backend/.env
+
+# android/ios (if you ever add mobile later)
+mobile/android/
+mobile/ios/
+mobile/www/
+
+# logs
+*.log
