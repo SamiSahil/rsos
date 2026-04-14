@@ -1,11 +1,9 @@
-// frontend/js/config.js
 (function () {
   const PROD_API = 'https://genuine-cat-production-7821.up.railway.app/api';
   const DEV_API = 'http://localhost:5000/api';
 
   const isCapacitor =
     window.location.protocol === 'capacitor:' ||
-    window.location.hostname === 'capacitor' ||
     !!window.Capacitor;
 
   const isElectron =
@@ -13,6 +11,7 @@
 
   const isLocalDevBrowser =
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+    window.location.port === '5500' &&
     !isCapacitor &&
     !isElectron;
 
