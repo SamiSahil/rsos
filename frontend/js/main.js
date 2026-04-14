@@ -94,8 +94,15 @@ window.addEventListener('resize', () => {
 
 let deferredPrompt = null;
 
+// -------------------------
+// Platform helpers
+// -------------------------
 function isIos() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function isWindows() {
+  return /windows/i.test(window.navigator.userAgent);
 }
 
 function isInStandaloneMode() {
@@ -105,6 +112,13 @@ function isInStandaloneMode() {
   );
 }
 
+function hasWindowsExe() {
+  return !!(window.APP_CONFIG && window.APP_CONFIG.WINDOWS_EXE_URL);
+}
+
+// -------------------------
+// Install experience
+// -------------------------
 function setupInstallExperience() {
   const installBtn = document.getElementById('installPwaBtn');
   const iosBtn = document.getElementById('iosInstallHintBtn');
@@ -115,16 +129,44 @@ function setupInstallExperience() {
     return;
   }
 
+  // iOS hint button
   if (isIos()) {
     if (iosBtn) iosBtn.style.display = 'inline-flex';
+    if (installBtn) installBtn.style.display = 'none';
+    return;
   }
+
+  // ✅ Windows desktop: show EXE download button immediately
+  if (isWindows() && hasWindowsExe()) {
+    if (installBtn) {
+      installBtn.style.display = 'inline-flex';
+      // Change label to match EXE download behavior
+      installBtn.innerHTML = `
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 3v12" />
+          <path d="M7 10l5 5 5-5" />
+          <path d="M5 21h14" />
+        </svg>
+        Download Windows App (.exe)
+      `;
+    }
+    if (iosBtn) iosBtn.style.display = 'none';
+    return;
+  }
+
+  // Other platforms: keep hidden until beforeinstallprompt fires
 }
 
+// PWA prompt capture
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
 
   const installBtn = document.getElementById('installPwaBtn');
+
+  // ✅ Do not override Windows EXE button UI
+  if (isWindows() && hasWindowsExe()) return;
+
   if (installBtn && !isIos() && !isInStandaloneMode()) {
     installBtn.style.display = 'inline-flex';
   }
@@ -144,7 +186,18 @@ window.addEventListener('appinstalled', () => {
   }
 });
 
+// This is the button handler in your HTML: onclick="installPWA()"
 window.installPWA = async function () {
+  // ✅ Windows: download EXE
+  if (isWindows() && hasWindowsExe()) {
+    const url = window.APP_CONFIG.WINDOWS_EXE_URL;
+
+    // Force download navigation
+    window.location.href = url;
+    return;
+  }
+
+  // Normal PWA install flow
   if (!deferredPrompt) {
     if (typeof App !== 'undefined') {
       App.toast('Install option is not available right now.', 'warning');
