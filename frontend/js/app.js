@@ -106,6 +106,11 @@ const App = {
     });
   },
 
+goFromNotifications(page) {
+  this.closeModal();
+  this.navigate(page);
+},
+
   refreshUI() {
     this.updatePendingBadge();
     this.updateSyncQueueBadge();
@@ -412,30 +417,114 @@ if (page === 'analytics') {
     badge.style.display = total > 0 ? 'inline-flex' : 'none';
   },
 
-  updateAuthUI() {
-    const userInfo = this.byId('staffAuthInfo');
-    const appContainer = this.byId('app');
-    const user = Store.get('authUser');
+ updateAuthUI() {
+  const userInfo = this.byId('staffAuthInfo');
+  const appContainer = this.byId('app');
+  const user = Store.get('authUser');
 
-    if (appContainer) {
-      appContainer.classList.toggle('is-authenticated', !!user);
-    }
+  if (appContainer) {
+    appContainer.classList.toggle('is-authenticated', !!user);
+  }
 
-    if (!userInfo) return;
-
+  // ✅ Sidebar footer (always bottom of sidebar)
+  const sidebarFooter = this.byId('sidebarFooter');
+  if (sidebarFooter) {
     if (!user) {
-      userInfo.innerHTML = '';
-      return;
-    }
+      sidebarFooter.innerHTML = '';
+    } else {
+      sidebarFooter.innerHTML = `
+        <div class="staff-pill sidebar-staff-pill" data-role="${this.safeText(user.role)}">
+          <div class="staff-pill-left">
+            <div class="staff-role-icon" aria-hidden="true">
+              ${this.getRoleIcon(user.role)}
+            </div>
+            <div class="staff-pill-meta">
+              <div class="staff-pill-name">${this.safeText(user.fullName)}</div>
+              <div class="staff-pill-role">${this.safeText(user.role)}</div>
+            </div>
+          </div>
 
-    userInfo.innerHTML = `
-      <div class="staff-auth-chip">
-        <span class="staff-auth-name">${this.safeText(user.fullName)}</span>
-        <span class="staff-auth-role">${this.safeText(user.role)}</span>
-        <button class="btn btn-secondary btn-xs" onclick="App.logout()">Logout</button>
+          <button class="staff-logout-btn" onclick="App.logout()" title="Logout" aria-label="Logout">
+            ${this.getLogoutIcon()}
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  // ✅ Topbar staff pill (keep or remove as you like)
+  if (!userInfo) return;
+
+  if (!user) {
+    userInfo.innerHTML = '';
+    return;
+  }
+
+  userInfo.innerHTML = `
+    <div class="staff-pill" data-role="${this.safeText(user.role)}">
+      <div class="staff-pill-left">
+        <div class="staff-role-icon" aria-hidden="true">
+          ${this.getRoleIcon(user.role)}
+        </div>
+        <div class="staff-pill-meta">
+          <div class="staff-pill-name">${this.safeText(user.fullName)}</div>
+          <div class="staff-pill-role">${this.safeText(user.role)}</div>
+        </div>
       </div>
-    `;
-  },
+
+      <button class="staff-logout-btn" onclick="App.logout()" title="Logout" aria-label="Logout">
+        ${this.getLogoutIcon()}
+      </button>
+    </div>
+  `;
+},
+getRoleIcon(role = '') {
+  const r = String(role || '').toLowerCase();
+
+  // simple inline SVG icons (no external libs)
+  const icons = {
+    admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>`,
+    manager: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2l3 7 7 .5-5.5 4.5 2 7-6.5-4-6.5 4 2-7L2 9.5 9 9l3-7z"/>
+              </svg>`,
+    cashier: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7h16v10H4z"/>
+                <path d="M7 7V5h10v2"/>
+                <path d="M7 11h2"/>
+                <path d="M11 11h2"/>
+                <path d="M15 11h2"/>
+              </svg>`,
+    kitchen: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 2v8a4 4 0 004 4h0"/>
+                <path d="M10 14v8"/>
+                <path d="M14 2v20"/>
+                <path d="M18 2v8a4 4 0 01-4 4h0"/>
+              </svg>`,
+    waiter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               <path d="M4 19h16"/>
+               <path d="M7 19c0-4 2-7 5-7s5 3 5 7"/>
+               <path d="M9 7h6"/>
+               <path d="M10 3h4"/>
+             </svg>`
+  };
+
+  return icons[r] || icons.waiter;
+},
+
+getLogoutIcon() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+            <path d="M16 17l5-5-5-5"/>
+            <path d="M21 12H9"/>
+          </svg>`;
+},
+
+
+
+
 
   // UPDATED: sidebar shows only what the role can access
   updateRoleBasedNav() {
@@ -641,20 +730,30 @@ if (page === 'analytics') {
       : '<div class="panel-muted">No overdue orders</div>';
 
     const html = `
-      <div class="modal-stack">
-        <div class="panel-muted"><strong>${pending}</strong> pending order(s) in kitchen</div>
-        <div class="panel-danger"><strong>${lowStock}</strong> item(s) with low stock</div>
-        <div class="panel-info"><strong>${syncQueue}</strong> queued offline change(s)</div>
-        <div>
-          <strong>Due Soon</strong>
-          <div class="modal-stack" style="margin-top:8px">${dueSoonHtml}</div>
-        </div>
-        <div>
-          <strong>Overdue</strong>
-          <div class="modal-stack" style="margin-top:8px">${lateHtml}</div>
-        </div>
-      </div>
-    `;
+  <div class="modal-stack">
+    <button class="notif-row panel-muted" onclick="App.goFromNotifications('kitchen')">
+      <strong>${pending}</strong> pending order(s) in kitchen
+    </button>
+
+    <button class="notif-row panel-danger" onclick="App.goFromNotifications('inventory')">
+      <strong>${lowStock}</strong> item(s) with low stock
+    </button>
+
+    <button class="notif-row panel-info" onclick="App.goFromNotifications('sync')">
+      <strong>${syncQueue}</strong> queued offline change(s)
+    </button>
+
+    <div>
+      <strong>Due Soon</strong>
+      <div class="modal-stack" style="margin-top:8px">${dueSoonHtml}</div>
+    </div>
+
+    <div>
+      <strong>Overdue</strong>
+      <div class="modal-stack" style="margin-top:8px">${lateHtml}</div>
+    </div>
+  </div>
+`;
 
     this.openModal('Notifications', html, `<button class="btn btn-secondary" onclick="App.closeModal()">Close</button>`);
   },
