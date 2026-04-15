@@ -90,6 +90,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew bundleRelease --no-daemon
 
+      - name: Build Release APK (for testing)
+        working-directory: mobile/android
+        env:
+          KEYSTORE_FILE: release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
       - name: Confirm keystore exists
         working-directory: mobile/android/app
         run: ls -la release.jks
@@ -99,3 +108,9 @@ jobs:
         with:
           name: RestOS-Android-AAB
           path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RestOS-Android-APK
+          path: mobile/android/app/build/outputs/apk/release/app-release.apk
