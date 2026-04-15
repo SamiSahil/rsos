@@ -1,13 +1,16 @@
 const StaffPage = {
+  // state
   isLoading: false,
-
   payrollMonth: '',
   payrollMap: new Map(),
   payrollFilter: 'all',
-
   calendarYear: null,
   calendarMonthIndex: null,
+  abortController: null,
 
+  // ---------------------------
+  // DOM helpers
+  // ---------------------------
   byId(id) {
     return document.getElementById(id);
   },
@@ -21,14 +24,27 @@ const StaffPage = {
   },
 
   // ---------------------------
+  // Date/time helpers (timezone-safe)
+  // ---------------------------
+  getLocalISOString(date = new Date()) {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - offset * 60 * 1000);
+    return localDate.toISOString().split('T')[0];
+  },
+
+  getTodayDateString() {
+    return this.getLocalISOString();
+  },
+
+  // ---------------------------
   // Payroll month
   // ---------------------------
- getDefaultPayrollMonth() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0'); // current month (local)
-  return `${y}-${m}`;
-},
+  getDefaultPayrollMonth() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  },
 
   ensurePayrollMonth() {
     if (!this.payrollMonth) this.payrollMonth = this.getDefaultPayrollMonth();
@@ -49,8 +65,10 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Search/filter
+  // Search/filter (debounced)
   // ---------------------------
+  _searchDebounceTimer: null,
+
   setPayrollFilter(filter) {
     this.payrollFilter = filter || 'all';
 
@@ -76,19 +94,37 @@ const StaffPage = {
     return (this.byId('staffSearchInput')?.value || '').trim().toLowerCase();
   },
 
+  initSearchListener() {
+    const input = this.byId('staffSearchInput');
+    if (!input) return;
+    input.addEventListener('input', () => {
+      clearTimeout(this._searchDebounceTimer);
+      this._searchDebounceTimer = setTimeout(() => this.renderTable(), 200);
+    });
+  },
+
   // ---------------------------
-  // Attendance counts for selected month (UI consistency)
-  // NEW RULE:
-  // active = 1.0, leave = 0.5, absent/unmarked = 0
-  // keep decimals
+  // Attendance display (uses backend-provided values when available; consistent rule fallback)
+  // Rule: active=1.0, leave=0.5, absent/unmarked=0 (keeps decimals)
   // ---------------------------
   getAttendanceCountsForMonth(person, monthStr) {
-    const entries = (person.attendance || []).filter((e) => e?.date && e.date.startsWith(monthStr));
+    // Prefer payroll snapshot fields if present (single source of truth)
+    const row = this.getPayrollForStaff(person._id);
+    if (row?.snapshot) {
+      return {
+        workingDays: Number(row.snapshot.workingDays || person.workingDays || 30),
+        presentDays: Number(row.snapshot.presentDays || 0),
+        leaveDays: Number(row.snapshot.leaveDays || 0),
+        paidEquivalentDays: Number(row.snapshot.paidEquivalentDays || 0),
+        unpaidEquivalentDays: Number(row.snapshot.unpaidEquivalentDays || 0)
+      };
+    }
 
+    // Fallback local calculation (for display only; payable must come from API)
+    const entries = (person.attendance || []).filter((e) => e?.date && e.date.startsWith(monthStr));
     const presentDays = entries.filter((e) => e.status === 'active').length;
     const leaveDays = entries.filter((e) => e.status === 'on-leave').length;
-
-    const paidEquivalentDays = presentDays + leaveDays * 0.5; // decimals
+    const paidEquivalentDays = presentDays + leaveDays * 0.5;
     const workingDays = Math.max(1, Number(person.workingDays || 30));
     const unpaidEquivalentDays = Math.max(workingDays - paidEquivalentDays, 0);
 
@@ -97,7 +133,6 @@ const StaffPage = {
 
   formatMonthAttendanceBadge(person) {
     const c = this.getAttendanceCountsForMonth(person, this.payrollMonth);
-
     return `
       <div class="staff-attendance-month">
         <span class="staff-att-badge"><strong>${c.presentDays}</strong> Present</span>
@@ -109,20 +144,32 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Payroll API
+  // Payroll API (with abort support)
   // ---------------------------
   async fetchPayrollSummary() {
     this.ensurePayrollMonth();
-    const json = await Store.request(`/payroll/summary?month=${encodeURIComponent(this.payrollMonth)}`);
+    if (this.abortController) this.abortController.abort();
+    this.abortController = new AbortController();
+
+    const json = await Store.request(
+      `/payroll/summary?month=${encodeURIComponent(this.payrollMonth)}`,
+      { signal: this.abortController.signal }
+    );
+
     const list = json.data || [];
     this.payrollMap = new Map(list.map((row) => [String(row.staffId), row]));
   },
 
   async fetchPayrollPayments(staffId) {
     this.ensurePayrollMonth();
+    if (this.abortController) this.abortController.abort();
+    this.abortController = new AbortController();
+
     const json = await Store.request(
-      `/payroll/payments?month=${encodeURIComponent(this.payrollMonth)}&staffId=${encodeURIComponent(staffId)}`
+      `/payroll/payments?month=${encodeURIComponent(this.payrollMonth)}&staffId=${encodeURIComponent(staffId)}`,
+      { signal: this.abortController.signal }
     );
+
     return json.data || [];
   },
 
@@ -131,7 +178,7 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Load/render
+  // Load/render lifecycle
   // ---------------------------
   async load() {
     if (this.isLoading) return;
@@ -143,10 +190,12 @@ const StaffPage = {
       await this.fetchPayrollSummary();
       this.render();
     } catch (error) {
+      if (error.name === 'AbortError') return; // ignore stale requests
       console.error(error);
       App.toast(error.message || 'Failed to load staff/payroll', 'error');
     } finally {
       this.isLoading = false;
+      this.abortController = null;
     }
   },
 
@@ -199,8 +248,7 @@ const StaffPage = {
       <div class="panel-muted" style="margin-bottom:16px">
         <strong>Salary Month:</strong> ${App.safeText(s.monthLabel)}
         <div class="text-soft" style="margin-top:6px">
-          Rule: Present = 100%, Leave = 50%, Absent = 0%.
-          (Decimals kept. Payments can be made any day. Receipts are proof.)
+          Rule: Present = 100%, Leave = 50%, Absent = 0%. (Decimals kept. Payable is calculated server-side for accuracy.)
         </div>
       </div>
 
@@ -260,12 +308,8 @@ const StaffPage = {
     return fullName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   },
 
-  getTodayDateString() {
-    return new Date().toISOString().slice(0, 10);
-  },
-
   // ---------------------------
-  // Attendance controls (Today)
+  // Attendance controls (Today) — timezone-safe
   // ---------------------------
   renderStatusControls(person) {
     const today = this.getTodayDateString();
@@ -313,7 +357,7 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Payroll cell
+  // Payroll cell (uses API values)
   // ---------------------------
   renderPayrollCell(person) {
     const row = this.getPayrollForStaff(person._id);
@@ -430,7 +474,7 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Payroll: Pay / history / receipt (updated snapshot fields)
+  // Payroll: Pay / history / receipt (safe, snapshot-driven)
   // ---------------------------
   openPaySalaryModal(staffId) {
     const staff = this.findStaff(staffId);
@@ -477,8 +521,14 @@ const StaffPage = {
     const btn = this.byId('confirmSalaryPayBtn');
     const amount = Number(this.byId('salaryPayAmount')?.value || 0);
     const note = (this.byId('salaryPayNote')?.value || '').trim();
+    const row = this.getPayrollForStaff(staffId);
+    const dueAmount = Number(row?.dueAmount || 0);
 
     if (!amount || amount <= 0) return App.toast('Enter a valid amount', 'warning');
+    if (amount > dueAmount) {
+      const proceed = confirm(`Amount exceeds due balance (${App.currency(dueAmount)}). Are you sure you want to pay ${App.currency(amount)}?`);
+      if (!proceed) return;
+    }
 
     App.setButtonLoading(btn, true, 'Saving...', 'Confirm');
 
@@ -616,21 +666,13 @@ const StaffPage = {
     const receipt = this.byId('salaryReceiptPrint');
     if (!receipt) return App.toast('Receipt not found', 'error');
 
-    const w = window.open('', '_blank', 'width=420,height=700');
-    if (!w) return App.toast('Unable to open print window', 'error');
-
-    w.document.write(`<html><head><title>Salary Receipt</title></head><body>${receipt.innerHTML}</body></html>`);
-    w.document.close();
-    w.focus();
-
-    setTimeout(() => {
-      w.print();
-      w.close();
-    }, 300);
+    // Prefer CSS-based printing: hide all except #salaryReceiptPrint via @media print in your global stylesheet.
+    // This keeps styling consistent and avoids popup blockers/style loss.
+    window.print();
   },
 
   // ---------------------------
-  // Calendar (opens on payroll month; future disabled)
+  // Calendar (opens on payroll month; future disabled; timezone-safe)
   // ---------------------------
   getAttendanceStatusForDate(person, dateStr) {
     const entry = (person.attendance || []).find((item) => item.date === dateStr);
@@ -674,7 +716,7 @@ const StaffPage = {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateObj = new Date(year, monthIndex, day);
       dateObj.setHours(0, 0, 0, 0);
-      const dateStr = dateObj.toISOString().slice(0, 10);
+      const dateStr = this.getLocalISOString(dateObj);
 
       const isFuture = dateObj.getTime() > todayStart.getTime();
       const status = isFuture ? '' : this.getAttendanceStatusForDate(staff, dateStr);
@@ -769,35 +811,37 @@ const StaffPage = {
   },
 
   // ---------------------------
-  // Staff CRUD + photo + NID
+  // Staff CRUD + photo + NID (safer forms, validation)
   // ---------------------------
   openAddModal() {
     const body = `
-      <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="staffFullName"></div>
-      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="staffEmail" type="email"></div>
-      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="staffPhone"></div>
-      <div class="form-group"><label class="form-label">Password</label><input class="form-input" id="staffPassword" type="password"></div>
-      <div class="form-group"><label class="form-label">Address</label><textarea class="form-textarea" id="staffAddress"></textarea></div>
+      <form id="staffAddForm">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" name="fullName" required></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" name="email" type="email" required></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" name="phone"></div>
+        <div class="form-group"><label class="form-label">Password</label><input class="form-input" name="password" type="password" required></div>
+        <div class="form-group"><label class="form-label">Address</label><textarea class="form-textarea" name="address"></textarea></div>
 
-      <div class="form-group"><label class="form-label">Staff Photo</label><input class="form-input" id="staffPhoto" type="file" accept="image/*"></div>
+        <div class="form-group"><label class="form-label">Staff Photo</label><input class="form-input" name="photo" type="file" accept="image/*"></div>
 
-      <div class="form-group"><label class="form-label">NID Number</label><input class="form-input" id="staffNidNumber"></div>
-      <div class="form-group"><label class="form-label">NID Image</label><input class="form-input" id="staffNidImage" type="file" accept="image/*"></div>
+        <div class="form-group"><label class="form-label">NID Number</label><input class="form-input" name="nidNumber"></div>
+        <div class="form-group"><label class="form-label">NID Image</label><input class="form-input" name="nidImage" type="file" accept="image/*"></div>
 
-      <div class="form-group">
-        <label class="form-label">Role</label>
-        <select class="form-select" id="staffRole">
-          <option value="waiter">Waiter</option>
-          <option value="cashier">Cashier</option>
-          <option value="kitchen">Kitchen</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-select" name="role">
+            <option value="waiter">Waiter</option>
+            <option value="cashier">Cashier</option>
+            <option value="kitchen">Kitchen</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
 
-      <div class="form-group"><label class="form-label">Join Date</label><input class="form-input" id="staffJoinDate" type="date"></div>
-      <div class="form-group"><label class="form-label">Monthly Salary</label><input class="form-input" id="staffMonthlySalary" type="number" min="0"></div>
-      <div class="form-group"><label class="form-label">Working Days</label><input class="form-input" id="staffWorkingDays" type="number" min="1" value="30"></div>
+        <div class="form-group"><label class="form-label">Join Date</label><input class="form-input" name="joinDate" type="date"></div>
+        <div class="form-group"><label class="form-label">Monthly Salary</label><input class="form-input" name="monthlySalary" type="number" min="0"></div>
+        <div class="form-group"><label class="form-label">Working Days</label><input class="form-input" name="workingDays" type="number" min="1" value="30"></div>
+      </form>
     `;
 
     const footer = `
@@ -806,34 +850,6 @@ const StaffPage = {
     `;
 
     App.openModal('Add Staff', body, footer);
-  },
-
-  buildStaffFormData(prefix = '') {
-    const formData = new FormData();
-    const field = (baseId) => {
-      const id = prefix ? `${prefix}${baseId.charAt(0).toUpperCase()}${baseId.slice(1)}` : baseId;
-      return this.byId(id);
-    };
-
-    formData.append('fullName', field('staffFullName')?.value?.trim() || '');
-    formData.append('email', field('staffEmail')?.value?.trim() || '');
-    formData.append('phone', field('staffPhone')?.value?.trim() || '');
-    formData.append('password', field('staffPassword')?.value?.trim() || '');
-    formData.append('address', field('staffAddress')?.value?.trim() || '');
-    formData.append('nidNumber', field('staffNidNumber')?.value?.trim() || '');
-    formData.append('role', field('staffRole')?.value || 'waiter');
-    formData.append('status', field('staffStatus')?.value || 'active');
-    formData.append('joinDate', field('staffJoinDate')?.value || '');
-    formData.append('monthlySalary', field('staffMonthlySalary')?.value || '0');
-    formData.append('workingDays', field('staffWorkingDays')?.value || '30');
-
-    const nid = field('staffNidImage')?.files?.[0];
-    if (nid) formData.append('nidImage', nid);
-
-    const photo = field('staffPhoto')?.files?.[0];
-    if (photo) formData.append('photo', photo);
-
-    return formData;
   },
 
   validateStaffForm(formData, isEdit = false) {
@@ -851,8 +867,10 @@ const StaffPage = {
 
   async saveNewStaff() {
     const saveBtn = this.byId('saveStaffBtn');
-    const formData = this.buildStaffFormData('');
+    const formElement = this.byId('staffAddForm');
+    if (!formElement) return;
 
+    const formData = new FormData(formElement);
     if (!this.validateStaffForm(formData, false)) return;
 
     App.setButtonLoading(saveBtn, true, 'Saving...', 'Save');
@@ -920,44 +938,46 @@ const StaffPage = {
     const joinDateValue = staff.joinDate ? new Date(staff.joinDate).toISOString().slice(0, 10) : '';
 
     const body = `
-      <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" id="editStaffFullName" value="${App.safeText(staff.fullName,'')}"></div>
-      <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="editStaffEmail" type="email" value="${App.safeText(staff.email,'')}"></div>
-      <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="editStaffPhone" value="${App.safeText(staff.phone||'','')}"></div>
-      <div class="form-group"><label class="form-label">New Password (optional)</label><input class="form-input" id="editStaffPassword" type="password" placeholder="Leave blank to keep current"></div>
-      <div class="form-group"><label class="form-label">Address</label><textarea class="form-textarea" id="editStaffAddress">${App.safeText(staff.address||'','')}</textarea></div>
+      <form id="staffEditForm">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" name="fullName" value="${App.safeText(staff.fullName,'')}" required></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" name="email" type="email" value="${App.safeText(staff.email,'')}" required></div>
+        <div class="form-group"><label class="form-label">Phone</label><input class="form-input" name="phone" value="${App.safeText(staff.phone||'','')}"></div>
+        <div class="form-group"><label class="form-label">New Password (optional)</label><input class="form-input" name="password" type="password" placeholder="Leave blank to keep current"></div>
+        <div class="form-group"><label class="form-label">Address</label><textarea class="form-textarea" name="address">${App.safeText(staff.address||'','')}</textarea></div>
 
-      <div class="panel-muted"><strong>Current Photo:</strong><br>
-        ${staff.photoUrl ? `<img src="${App.safeText(staff.photoUrl,'')}" class="staff-detail-image" style="margin-top:10px">` : `<span class="text-soft">No photo</span>`}
-      </div>
+        <div class="panel-muted"><strong>Current Photo:</strong><br>
+          ${staff.photoUrl ? `<img src="${App.safeText(staff.photoUrl,'')}" class="staff-detail-image" style="margin-top:10px">` : `<span class="text-soft">No photo</span>`}
+        </div>
 
-      <div class="form-group"><label class="form-label">Replace Staff Photo</label><input class="form-input" id="editStaffPhoto" type="file" accept="image/*"></div>
+        <div class="form-group"><label class="form-label">Replace Staff Photo</label><input class="form-input" name="photo" type="file" accept="image/*"></div>
 
-      <div class="form-group"><label class="form-label">NID Number</label><input class="form-input" id="editStaffNidNumber" value="${App.safeText(staff.nidNumber||'','')}"></div>
-      <div class="form-group"><label class="form-label">Replace NID Image</label><input class="form-input" id="editStaffNidImage" type="file" accept="image/*"></div>
+        <div class="form-group"><label class="form-label">NID Number</label><input class="form-input" name="nidNumber" value="${App.safeText(staff.nidNumber||'','')}"></div>
+        <div class="form-group"><label class="form-label">Replace NID Image</label><input class="form-input" name="nidImage" type="file" accept="image/*"></div>
 
-      <div class="form-group">
-        <label class="form-label">Role</label>
-        <select class="form-select" id="editStaffRole">
-          <option value="waiter" ${staff.role === 'waiter' ? 'selected' : ''}>Waiter</option>
-          <option value="cashier" ${staff.role === 'cashier' ? 'selected' : ''}>Cashier</option>
-          <option value="kitchen" ${staff.role === 'kitchen' ? 'selected' : ''}>Kitchen</option>
-          <option value="manager" ${staff.role === 'manager' ? 'selected' : ''}>Manager</option>
-          <option value="admin" ${staff.role === 'admin' ? 'selected' : ''}>Admin</option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-select" name="role">
+            <option value="waiter" ${staff.role === 'waiter' ? 'selected' : ''}>Waiter</option>
+            <option value="cashier" ${staff.role === 'cashier' ? 'selected' : ''}>Cashier</option>
+            <option value="kitchen" ${staff.role === 'kitchen' ? 'selected' : ''}>Kitchen</option>
+            <option value="manager" ${staff.role === 'manager' ? 'selected' : ''}>Manager</option>
+            <option value="admin" ${staff.role === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label">Status</label>
-        <select class="form-select" id="editStaffStatus">
-          <option value="active" ${staff.status === 'active' ? 'selected' : ''}>Active</option>
-          <option value="inactive" ${staff.status === 'inactive' ? 'selected' : ''}>Inactive</option>
-          <option value="on-leave" ${staff.status === 'on-leave' ? 'selected' : ''}>On Leave</option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" name="status">
+            <option value="active" ${staff.status === 'active' ? 'selected' : ''}>Active</option>
+            <option value="inactive" ${staff.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+            <option value="on-leave" ${staff.status === 'on-leave' ? 'selected' : ''}>On Leave</option>
+          </select>
+        </div>
 
-      <div class="form-group"><label class="form-label">Join Date</label><input class="form-input" id="editStaffJoinDate" type="date" value="${joinDateValue}"></div>
-      <div class="form-group"><label class="form-label">Monthly Salary</label><input class="form-input" id="editStaffMonthlySalary" type="number" min="0" value="${staff.monthlySalary||0}"></div>
-      <div class="form-group"><label class="form-label">Working Days</label><input class="form-input" id="editStaffWorkingDays" type="number" min="1" value="${staff.workingDays||30}"></div>
+        <div class="form-group"><label class="form-label">Join Date</label><input class="form-input" name="joinDate" type="date" value="${joinDateValue}"></div>
+        <div class="form-group"><label class="form-label">Monthly Salary</label><input class="form-input" name="monthlySalary" type="number" min="0" value="${staff.monthlySalary||0}"></div>
+        <div class="form-group"><label class="form-label">Working Days</label><input class="form-input" name="workingDays" type="number" min="1" value="${staff.workingDays||30}"></div>
+      </form>
     `;
 
     const footer = `
@@ -970,7 +990,10 @@ const StaffPage = {
 
   async saveEditStaff(id) {
     const saveBtn = this.byId('saveEditStaffBtn');
-    const formData = this.buildStaffFormData('edit');
+    const formElement = this.byId('staffEditForm');
+    if (!formElement) return;
+
+    const formData = new FormData(formElement);
     if (!this.validateStaffForm(formData, true)) return;
 
     App.setButtonLoading(saveBtn, true, 'Saving...', 'Save Changes');
@@ -994,7 +1017,14 @@ const StaffPage = {
 
     App.openModal(
       'Delete Staff',
-      `<p class="text-muted">Are you sure you want to delete <strong>${App.safeText(staff.fullName)}</strong>?</p>`,
+      `
+        <p class="text-muted">
+          Are you sure you want to delete <strong>${App.safeText(staff.fullName)}</strong>?
+        </p>
+        <div class="panel-warning" style="margin-top:10px">
+          <strong>Important:</strong> Deleting this staff may remove them from active views and can orphan historical payroll records from this interface. Consider setting them to <em>Inactive</em> instead to preserve records and reporting integrity.
+        </div>
+      `,
       `
         <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
         <button class="btn btn-danger" id="deleteStaffBtn" onclick="StaffPage.confirmDelete('${id}')">Delete</button>
@@ -1020,3 +1050,33 @@ const StaffPage = {
     }
   }
 };
+
+// ---------------------------
+// Boot (call once after DOM ready)
+// ---------------------------
+document.addEventListener('DOMContentLoaded', () => {
+  StaffPage.initSearchListener();
+  StaffPage.load();
+
+  // Wire month change
+  const monthInput = StaffPage.byId('payrollMonthInput');
+  if (monthInput) {
+    monthInput.addEventListener('change', (e) => StaffPage.setPayrollMonth(e.target.value));
+  }
+
+  // Wire filter buttons
+  const allBtn = StaffPage.byId('staffFilterAll');
+  if (allBtn) allBtn.addEventListener('click', () => StaffPage.setPayrollFilter('all'));
+
+  const dueBtn = StaffPage.byId('staffFilterDue');
+  if (dueBtn) dueBtn.addEventListener('click', () => StaffPage.setPayrollFilter('due'));
+
+  const paidBtn = StaffPage.byId('staffFilterPaid');
+  if (paidBtn) paidBtn.addEventListener('click', () => StaffPage.setPayrollFilter('paid'));
+
+  const addBtn = StaffPage.byId('staffAddBtn');
+  if (addBtn) addBtn.addEventListener('click', () => StaffPage.openAddModal());
+
+  const refreshBtn = StaffPage.byId('staffRefreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => StaffPage.load());
+});
