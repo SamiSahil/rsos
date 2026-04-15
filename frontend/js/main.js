@@ -129,18 +129,28 @@ function hasWindowsExe() {
 function setupInstallExperience() {
   const installBtn = document.getElementById('installPwaBtn');
   const iosBtn = document.getElementById('iosInstallHintBtn');
+  const androidBtn = document.getElementById('androidInstallBtn');
 
   if (isInStandaloneMode()) {
     if (installBtn) installBtn.style.display = 'none';
     if (iosBtn) iosBtn.style.display = 'none';
+    if (androidBtn) androidBtn.style.display = 'none';
     return;
   }
 
-  // iOS hint button
+  // iOS
   if (isIos()) {
     if (iosBtn) iosBtn.style.display = 'inline-flex';
     if (installBtn) installBtn.style.display = 'none';
+    if (androidBtn) androidBtn.style.display = 'none';
     return;
+  }
+
+  // Android (Play Store)
+  if (isAndroid() && window.APP_CONFIG?.ANDROID_INSTALL_URL) {
+    if (androidBtn) androidBtn.style.display = 'inline-flex';
+  } else {
+    if (androidBtn) androidBtn.style.display = 'none';
   }
 
   // ✅ Windows desktop: show EXE download button immediately
@@ -244,6 +254,37 @@ window.showIosInstallInstructions = function () {
       </div>
     `,
     `<button class="btn btn-primary" onclick="App.closeModal()">Got it</button>`
+  );
+};
+
+function isAndroid() {
+  return /android/i.test(navigator.userAgent);
+}
+
+window.confirmAndroidInstall = function () {
+  const url = window.APP_CONFIG?.ANDROID_INSTALL_URL;
+
+  if (!url) {
+    App.toast("Android install link is not configured", "warning");
+    return;
+  }
+
+  App.openModal(
+    "Install on Android",
+    `
+      <div class="modal-stack">
+        <div class="panel-info">
+          This will open the Google Play page for RestOS.<br>
+          From there you can tap <strong>Install</strong>.
+        </div>
+      </div>
+    `,
+    `
+      <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="App.closeModal(); window.open('${url}', '_blank')">
+        Open Play Store
+      </button>
+    `
   );
 };
 

@@ -19,6 +19,7 @@
   window.APP_CONFIG = {
     API_BASE: isLocalDevBrowser ? DEV_API : PROD_API,
     WINDOWS_EXE_URL: 'https://github.com/SamiSahil/rsos/releases/download/v1.0/RestOS.Setup.1.0.0.exe',
+    ANDROID_INSTALL_URL: "https://play.google.com/apps/testing/com.restos.app",
   
     TAX_RATE: 0.05,
     CURRENCY_SYMBOL: '৳',
