@@ -55,6 +55,12 @@ jobs:
           which node
           which npm
 
+      - name: Ensure Android assets folders exist
+        run: |
+          mkdir -p mobile/android/app/src/main/assets
+          mkdir -p mobile/android/app/src/main/assets/public
+          mkdir -p mobile/www
+
       - name: Capacitor sync android
         working-directory: mobile
         run: npx --yes cap sync android
