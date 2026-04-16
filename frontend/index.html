@@ -614,30 +614,9 @@
           </div>
 
           <div style="margin-top: 24px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-            <button class="btn btn-primary" id="installPwaBtn" style="display:none; padding: 12px 24px; font-size: 0.9rem;" onclick="installPWA()">
-              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M12 3v12" />
-                <path d="M7 10l5 5 5-5" />
-                <path d="M5 21h14" />
-              </svg>
-              Install App on Device
-            </button>
-          <button
-  class="btn btn-primary"
-  id="androidInstallBtn"
-  style="display:none; padding: 12px 24px; font-size: 0.9rem;"
-  onclick="confirmAndroidInstall()"
->
-  Install on Android
-</button>
-            <button class="btn btn-secondary" id="iosInstallHintBtn" style="display:none; padding: 12px 24px; font-size: 0.9rem;" onclick="showIosInstallInstructions()">
-              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M12 16V4" />
-                <path d="M8 8l4-4 4 4" />
-                <path d="M4 20h16" />
-              </svg>
-              Install on iPhone/iPad
-            </button>
+            <button id="installPwaBtn" style="display:none" class="btn btn-primary" onclick="installPWA()">Install</button>
+            <button id="androidInstallBtn" style="display:none" class="btn btn-primary" onclick="confirmAndroidInstall()">Install on Android</button>
+            <button id="iosInstallHintBtn" style="display:none" class="btn btn-secondary" onclick="showIosInstallInstructions()">Install on iPhone/iPad</button>
           </div> 
           
    
